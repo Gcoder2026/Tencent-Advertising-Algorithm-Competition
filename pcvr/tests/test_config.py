@@ -43,3 +43,21 @@ def test_config_round_trips_to_dict():
     assert d["d_model"] == 32
     cfg2 = Config(**d)
     assert asdict(cfg2) == d
+
+
+def test_config_rejects_bad_seq_encoder_and_rank_mixer():
+    from configs.baseline import Config
+    with pytest.raises(ValueError, match="seq_encoder_type"):
+        Config(seq_encoder_type="lstm")
+    with pytest.raises(ValueError, match="rank_mixer_mode"):
+        Config(rank_mixer_mode="custom")
+
+
+def test_config_rejects_bad_bounds():
+    from configs.baseline import Config
+    with pytest.raises(ValueError, match="min_lr_factor"):
+        Config(min_lr_factor=0.0)
+    with pytest.raises(ValueError, match="min_lr_factor"):
+        Config(min_lr_factor=1.5)
+    with pytest.raises(ValueError, match="warmup_steps"):
+        Config(warmup_steps=-1)
