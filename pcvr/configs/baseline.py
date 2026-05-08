@@ -90,8 +90,8 @@ class Config:
     focal_gamma: float = 2.0
 
     # ---- Sparse re-init (KuaiShou MultiEpoch trick) ----
-    reinit_sparse_after_epoch: int = 1
-    reinit_cardinality_threshold: int = 0
+    # Deliberately not implemented in v0. If benchmarking shows it helps,
+    # add the trainer-side rebuild + the corresponding fields here.
 
     # ---- Save / resume ----
     save_every_n_steps: int = 0     # 0 -> only at validation new-best
