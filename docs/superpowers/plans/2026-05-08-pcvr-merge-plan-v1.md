@@ -8,6 +8,21 @@
 
 ---
 
+## Critic-integrated revisions (v1.1, 2026-05-08)
+
+A dedicated critic agent challenged this plan after v1 was drafted. Substantive findings, all integrated below:
+
+1. **B's 0.807 anchor is unverified** (BLOCKER per critic). B's source code writes `result.json`, no rename in run.sh — direct verification confirmed. Implication: their leaderboard 0.807 may correspond to a hand-patched zip, not the committed code. **Action item for the user**: ping the teammate, ask whether the graded submission used the committed `submission_v1.zip` as-is or a renamed variant. Until answered, treat 0.807 as a soft signal, not a verifiable anchor.
+2. **H2 must update both `get_pcvr_data` AND `_row_group_timestamps`** (data.py:777). Verified: both functions independently `sorted(glob(...))`, so they happen to agree today, but H2 in only one path makes the validator silently misleading. Effort revised: 1h → **2-3h**. Scope: extract a shared `_collect_row_groups_sorted_by_time()` helper.
+3. **H3 valid_ratio 0.05 needs `patience` bumped to 7-8**. With step-level eval and halved val set, per-checkpoint AUC variance rises ~√2; current `patience=5` (or 2 in `first_submission`) would trigger spurious early termination. Bundle the bump with the ratio change.
+4. **H4 (transformer) and M6 (RoPE) ablations should run LOCALLY first.** Validate against local AUC; only burn a leaderboard slot if local AUC exceeds 0.86 by ≥ 0.002. With 42 total slots over 14 days and roadmap streams already claiming most, ablations on a 4k-step plateau are not slot-worthy without local evidence.
+5. **M1 cold-restart sparse re-init may never fire** with current step-based stopping. The re-init hook fires at epoch boundaries; if early-stopping triggers within 1-2 epochs (likely on platform-scale data), the 3-4h implementation buys nothing. **Verify the epoch count of the prior 0.86 run before implementing M1.**
+6. **M2 (`seq_truncate='auto'`) verification promoted to H0** — see new H0 below. If any seq domain stores oldest-first, A is silently dropping the most recent user behavior, which is a systematic correctness bug not a tuning knob. The verification step (read one RG, check timestamp order per domain) is a 15-minute task.
+7. **NEW H5: embedding-capacity ablation (local only).** The 0.86 AUC plateau at step 4k of a 26k-step run is the strongest diagnostic signal in the project right now. None of the existing H/M items address it. Halve/double `emb_dim` and `d_model`, compare 4k-step AUC locally — directly tells us whether we're capacity-bound (→ prioritize architecture work) or signal-bound (→ prioritize features/data).
+8. **NEW M7: end-to-end reproducibility script.** Code review requires reproducing from a cold clone in the platform environment. A has Python build scripts but no single command that does data-prep → train → infer → zip. Add a `Makefile` target or a `scripts/repro.sh` that captures the full pipeline.
+
+---
+
 ## Headline finding (CRITICAL)
 
 **B's `infer.py` (both v1 and v2) writes `result.json`. The platform's rulebook mandates `predictions.json`.** Either the grader silently accepts `result.json`, B has an off-repo workaround that renames the file, or B's 0.807 was scored under conditions we can't reproduce. **A's `predictions.json` is correct per spec; do not regress.**
@@ -40,6 +55,13 @@ After direct verification:
 
 ## HIGH priority pulls (do this batch first)
 
+### H0. (NEW from critic) Verify per-domain seq-event timestamp order
+**What:** Read one parquet file from training data (or HF sample once H1 lands). For each of `seq_a/b/c/d`'s timestamp column (`<prefix>_<ts_fid>`), compute the diff of consecutive events in a few rows. If diffs are systematically negative, the domain stores newest-first (current `head` truncation is correct). If positive, the domain is oldest-first and `head` truncation drops the most-recent events — `tail` truncation is needed.
+**Why:** The result determines whether M2 (`seq_truncate='auto'`) is a P0 correctness bug fix or a P2 polish item. Cheap to know.
+**Effort:** 15 min.
+**Risk:** None (read-only).
+**Files:** new `pcvr/scripts/check_seq_order.py` (single-file analysis script, gitignored).
+
 ### H1. `tools/prepare_hf_sample.py` + `data_sample_1000/schema.json`
 **What:** Copy B's HuggingFace download script + the committed reference schema that documents the actual platform's 46/14/10/4-domain feature layout (109 fids).
 **Why:** A's `tests/conftest.py` uses a 50-row toy schema (2/2/1/2). A schema-mismatch bug only surfaces on platform; pulling B's reference schema lets the smoke test catch it locally.
@@ -47,36 +69,45 @@ After direct verification:
 **Risk:** Near-zero. Both files are read-only references.
 **Files:** new `pcvr/tools/prepare_hf_sample.py`, new `pcvr/data_sample_1000/schema.json`.
 
-### H2. Timestamp-sorted row-group split in `get_pcvr_data()`
-**What:** Sort row groups by RG-level min timestamp BEFORE the train/valid split, instead of relying on glob order.
-**Why:** A's `assert_time_split_monotonic` checks the order but doesn't *fix* the split. If files are glob-sorted but RGs within files aren't time-ordered, the validator passes (because it reads RGs in glob order anyway) but the actual split is wrong. B reads RG min timestamp from parquet metadata (free, no row scan) and sorts before splitting.
-**Effort:** 1h. Replace ~15 lines in `pcvr/src/data.py:get_pcvr_data`.
-**Risk:** Low. Adds a sort step; doesn't change the dataset contract.
-**Files:** `pcvr/src/data.py`.
+### H2. Timestamp-sorted row-group split (in BOTH paths) — **REVISED per critic**
+**What:** Sort row groups by RG-level min timestamp BEFORE the train/valid split, AND update `_row_group_timestamps` to use the same sort, so the validator and training-split use the SAME RG ordering.
+**Why:** A's `assert_time_split_monotonic` checks the order but doesn't *fix* the split. Today both functions independently call `sorted(glob(*.parquet))` — they happen to agree, masking the real risk. If RGs within files aren't time-ordered, the validator passes but the split is wrong. **Critical:** if H2 only fixes `get_pcvr_data`, the validator becomes a confidence-builder for the wrong order. Extract a shared `_collect_row_groups_sorted_by_time()` and have both call it.
+**Effort:** **2-3h** (revised from 1h — must touch both code paths + add tests).
+**Risk:** Low (after the shared-helper refactor; medium if rushed).
+**Files:** `pcvr/src/data.py` (both `get_pcvr_data` and `_row_group_timestamps` + new shared helper).
 
-### H3. `valid_ratio: 0.05` (was 0.10)
-**What:** Halve the validation split → ~5% more training data.
-**Why:** B uses 0.05 in production; the leaderboard is the ground truth, local AUC is a noisier estimate either way. We have the time-split validator + (after H2) actually time-sorted split, so leakage risk is bounded.
-**Effort:** 5 min. One field on `configs/baseline.py` and `configs/first_submission.py`.
-**Risk:** Low. Worst case: noisier early-stop signal.
-**Files:** `pcvr/configs/baseline.py`.
+### H3. `valid_ratio: 0.05` + bump `patience` (was 0.10 + patience 5/2) — **REVISED per critic**
+**What:** Halve the val split → ~5% more training data, AND bump `patience` from 5 → 8 (and `first_submission` from 2 → 4) to compensate for ~√2× higher per-checkpoint AUC variance.
+**Why:** Cutting val data without raising patience causes spurious early termination on noisy dips. Bundle the changes.
+**Effort:** 5 min. Two fields on `configs/baseline.py` and `configs/first_submission.py`.
+**Risk:** Low after the patience bump.
+**Files:** `pcvr/configs/baseline.py`, `pcvr/configs/first_submission.py`.
 
-### H4. `seq_encoder_type='transformer'` ablation
+### H4. `seq_encoder_type='transformer'` ablation — **LOCAL FIRST per critic**
 **What:** Run one ablation with `transformer` encoder vs A's default `swiglu`. Pure config change.
-**Why:** B's v2 moved to transformer (rationale: SwiGLU has no intra-sequence attention, only per-position FFN). For ordered behavior sequences, attention should win. Costs one submission slot to test.
-**Effort:** 5 min config; ~1 GPU hour for a training run.
-**Risk:** Low — it's an ablation, not a forced change.
+**Why:** B's v2 moved to transformer (rationale: SwiGLU has no intra-sequence attention, only per-position FFN). For ordered behavior sequences, attention should win.
+**Effort:** 5 min config; ~1 GPU hour for a LOCAL training run on the HF sample (after H1).
+**Risk:** Low.
+**Submission rule:** Do NOT submit unless local AUC exceeds 0.86 baseline by ≥ 0.002. With ~42 total leaderboard slots and roadmap streams competing for them, an unvalidated ablation is not worth a slot.
 **Files:** new `pcvr/configs/ablation_transformer.py` inheriting baseline + `seq_encoder_type='transformer'`.
+
+### H5. (NEW from critic) Embedding-capacity diagnostic — local only
+**What:** Run 3 short local training runs at `(emb_dim, d_model) ∈ {(32, 32), (64, 64), (128, 128)}`. Compare 4k-step local AUC.
+**Why:** A's 0.86 AUC plateaus at step 4k of a 26k-step run. This is THE diagnostic signal in the project right now. None of the other H/M items address it. The result tells us whether the model is capacity-bound (→ prioritize H4 transformer + M6 RoPE + R1 DIN) or signal-bound (→ prioritize M2 truncation + R2 click head). Without this, every other architectural pull is unguided.
+**Effort:** 5 min config × 3; ~3 GPU hours local; no submission slot burn.
+**Risk:** None — local only.
+**Files:** new `pcvr/configs/diag_emb{32,64,128}.py`.
 
 ---
 
 ## MEDIUM priority pulls (post first iteration cycle)
 
-### M1. Cold-restart sparse re-init (KuaiShou MultiEpoch)
-**What:** Implement `model.reinit_high_cardinality_params(threshold)` (already exists in starter kit's model.py; should already be in A's port — verify) + trainer hook that snapshots Adagrad state by `data_ptr()`, calls reinit, rebuilds Adagrad, restores state for low-cardinality params only.
-**Why:** A's `Config` previously had `reinit_sparse_after_epoch` fields, removed in P0 fix-up because trainer didn't implement them. B's trainer has the implementation. Pull it back. Literature reports +0.001-0.003 on similar systems.
-**Effort:** 3-4h. ~50 lines in `trainer.py`, re-add 2 fields to `Config`.
-**Risk:** Medium. Optimizer state surgery; benchmark before committing.
+### M1. Cold-restart sparse re-init (KuaiShou MultiEpoch) — **CONDITIONAL per critic**
+**What:** Implement `model.reinit_high_cardinality_params(threshold)` + trainer hook that snapshots Adagrad state by `data_ptr()`, calls reinit, rebuilds Adagrad, restores state for low-cardinality params only.
+**Pre-check:** **Verify how many full epochs A actually completes** in a typical platform run. The re-init fires at epoch boundaries; if early stopping triggers within 1-2 epochs (likely on platform-scale data), this implementation buys nothing. Read the prior 0.86 run's log: how many epochs ran before patience exhausted? If < 3, **skip M1 entirely**.
+**Why (if M1 still applies):** Literature reports +0.001-0.003 from this technique. B's trainer has the implementation.
+**Effort:** 3-4h.
+**Risk:** Medium. Conditional on epoch count.
 **Files:** `pcvr/src/trainer.py`, `pcvr/configs/baseline.py`.
 
 ### M2. `seq_truncate='auto'` policy
@@ -104,10 +135,18 @@ After direct verification:
 **Effort:** 5 lines in `trainer._train_step`.
 **Files:** `pcvr/src/trainer.py`.
 
-### M6. Try `use_rope=True` ablation
+### M6. Try `use_rope=True` ablation — **LOCAL FIRST per critic**
 **What:** A has RoPE implementation but it's off by default. Toggle on as one ablation. (Already in code; just config.)
-**Effort:** 5 min config + 1 GPU hour.
+**Effort:** 5 min config + 1 GPU hour LOCAL.
+**Submission rule:** Same as H4 — submit only if local AUC ≥ 0.86 + 0.002.
 **Files:** new `pcvr/configs/ablation_rope.py`.
+
+### M7. (NEW from critic) End-to-end reproducibility entrypoint
+**What:** Add a `Makefile` target `make repro` (or `scripts/repro.sh`) that runs the full pipeline from a cold clone: `tools/prepare_hf_sample.py` (after H1 lands) → `python train.py --config first_submission` → `python infer.py` → `python build_step3_submission.py`. Verifies the submission can be reproduced top-to-bottom with one command.
+**Why:** Code review on the best submission is mandatory. Without a single-command reproduction path, the reviewer's environment may differ subtly from ours and the run may fail or score differently — disqualifying us regardless of AUC.
+**Effort:** 1h.
+**Risk:** None.
+**Files:** new `pcvr/Makefile` (or extend existing) + ensure all upstream commands work in sequence.
 
 ---
 
@@ -140,34 +179,53 @@ B's README has the explicit "no ensembling, 3 subs/day" rules in plain text. A's
 
 ---
 
-## Suggested merge order
+## Suggested merge order — **REVISED v1.1 per critic**
 
 ```
 Day-of-merge sequence:
 
-  1. H1  prepare_hf_sample.py + data_sample_1000/schema.json    [30 min, near-zero risk]
-  2. M3  Wire OOB + leak validators into train.py                [1h, A-internal]
-  3. H3  valid_ratio 0.05                                         [5 min]
-  4. H2  Timestamp-sorted RG split in get_pcvr_data               [1h]
-  5. M5  TensorBoard per-step Loss/train                          [5 lines]
-  6. M4  _strip_module_prefix in checkpoint.load_state_dict       [10 min]
+PHASE 0 — Diagnostics (no code merge, just observation, ~45 min):
+  ▸ Read the prior 0.86 platform run's log: how many epochs completed
+    before patience exhausted? (Determines whether M1 applies at all.)
+  ▸ ASK TEAMMATE: did your graded 0.807 submission use the committed
+    submission_v1.zip as-is, or a renamed variant?
+    (Determines whether B's anchor is verifiable.)
+
+PHASE 1 — Core merges (low-risk, ~5h):
+  1. H0  Verify per-domain seq-event timestamp order            [15 min]
+         If any domain is oldest-first → M2 promoted to P0.
+  2. H1  prepare_hf_sample.py + data_sample_1000/schema.json    [30 min]
+  3. M3  Wire OOB + leak validators into train.py                [1h]
+  4. M4  _strip_module_prefix in checkpoint.load_state_dict      [10 min]
+  5. M5  TensorBoard per-step Loss/train                         [5 lines]
+  6. H2  Timestamp-sorted RG split (BOTH paths)                  [2-3h]
+  7. H3  valid_ratio 0.05 + patience bump 5→8 / 2→4             [5 min]
+  8. M7  Makefile `make repro` end-to-end target                 [1h]
   --- run full pytest, confirm 35/35 still pass ---
-  --- rebuild step1_train.zip; if you want to submit a v0.5,
-      this is the moment ---
+  --- if H0 flagged any oldest-first domain, do M2 NOW (correctness fix) ---
+  --- rebuild step1_train.zip; this is the moment for an optional v0.5 submission ---
 
-Then create ablation configs, NOT yet in run.sh:
-  7. H4  configs/ablation_transformer.py
-  8. M6  configs/ablation_rope.py
+PHASE 2 — Local ablations (no submission slot burn, ~5h GPU):
+  9. H5  configs/diag_emb{32,64,128}.py — capacity diagnostic
+ 10. H4  configs/ablation_transformer.py — encoder ablation
+ 11. M6  configs/ablation_rope.py — RoPE ablation
+  --- compare 4k-step local AUC across {capacity × encoder × RoPE}
+      to choose ONE candidate that beats local 0.86 by ≥ 0.002 ---
+  --- only THEN submit the winner ---
 
-Larger work for after first ablation results land:
-  9. M1  Cold-restart sparse re-init                              [3-4h]
- 10. M2  seq_truncate='auto'                                      [2h]
+PHASE 3 — Conditional larger work (only if Phase 2 indicates a path):
+ 12. M1  Cold-restart sparse re-init                              [3-4h]
+         GATED on Phase-0 epoch-count check: skip if < 3 epochs typical.
+ 13. M2  seq_truncate='auto'                                      [2h]
+         Already done in Phase 1 if H0 flagged it.
 
 Roadmap additions (no code, just doc updates):
- 11. R1, R2, R3 added to roadmap v2 next time we update it.
+ 14. R1, R2, R3 added to roadmap v2 next time we update it.
+     R2 (multi-task click head) requires confirming a click-label
+     column exists in the platform data.
 ```
 
-Total H+M effort: ~10 hours, achievable in one focused day. None of it touches the v0 scaffold's invariants (audit, predictions.json hygiene, single-model rule, deterministic seed).
+**Revised total effort:** Phase 1 ≈ 5h merge work + 1h verification = 6h focused day. Phase 2 ≈ 5h GPU time, 0 submission slots. Phase 3 ≈ 0-6h depending on Phase 0 + Phase 2 outcomes. None of it regresses A's 0.86 baseline if Phase 1 + 2 are completed before any new submission.
 
 ---
 
