@@ -93,3 +93,20 @@ def test_label_rate_sane_fails_when_all_negative(tmp_path):
     from src.data import assert_label_rate_sane
     with pytest.raises(ValueError, match="positive rate"):
         assert_label_rate_sane(str(tmp_path), min_rate=0.001, max_rate=0.99)
+
+
+def test_oob_rate_check_passes_on_clean_stats():
+    from src.data import oob_rate_check
+    train_stats = {("user_int", 0): {"count": 5, "vocab": 100}}
+    eval_stats = {("user_int", 0): {"count": 8, "vocab": 100}}
+    n_rows = 1000
+    oob_rate_check(eval_stats, train_stats, n_rows, threshold_abs=0.01, threshold_ratio=2.0)
+
+
+def test_oob_rate_check_fails_on_spike():
+    from src.data import oob_rate_check
+    train_stats = {("user_int", 0): {"count": 5, "vocab": 100}}
+    eval_stats = {("user_int", 0): {"count": 200, "vocab": 100}}
+    n_rows = 1000
+    with pytest.raises(ValueError, match="OOB"):
+        oob_rate_check(eval_stats, train_stats, n_rows, threshold_abs=0.01, threshold_ratio=2.0)

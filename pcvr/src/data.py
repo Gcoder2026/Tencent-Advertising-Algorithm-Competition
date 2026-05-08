@@ -863,3 +863,33 @@ def assert_label_rate_sane(
             f"Sample positive rate (label_type==2) is {rate:.4f} on {seen} rows; "
             f"expected within [{min_rate}, {max_rate}]. Verify the label mapping.")
     return {"passed": True, "pos_rate": rate, "n_seen": seen, "n_pos": pos}
+
+
+def oob_rate_check(
+    eval_stats: Dict[Tuple[str, int], Dict[str, int]],
+    train_stats: Optional[Dict[Tuple[str, int], Dict[str, int]]] = None,
+    n_rows: int = 1,
+    threshold_abs: float = 0.01,
+    threshold_ratio: float = 2.0,
+) -> Dict[str, Any]:
+    """Fail if any feature's OOB rate at eval time exceeds an absolute threshold
+    or is ``threshold_ratio``× higher than train-time rate.
+
+    Stats are the dict produced by ``PCVRParquetDataset._oob_stats``.
+    ``n_rows`` is the row count over which ``count`` was accumulated.
+    """
+    failures = []
+    for key, s in eval_stats.items():
+        rate = s["count"] / max(1, n_rows)
+        if rate > threshold_abs:
+            failures.append((key, rate, "abs", threshold_abs))
+        if train_stats and key in train_stats:
+            tr_rate = train_stats[key]["count"] / max(1, n_rows)
+            if tr_rate > 0 and rate > tr_rate * threshold_ratio:
+                failures.append((key, rate, "ratio", tr_rate))
+    if failures:
+        msg = "OOB rate exceeded threshold(s):\n" + "\n".join(
+            f"  {k}: rate={r:.4f}, mode={mode}, ref={ref}" for k, r, mode, ref in failures
+        )
+        raise ValueError(msg)
+    return {"passed": True, "n_features_checked": len(eval_stats)}
