@@ -282,6 +282,8 @@ class Trainer:
         for epoch in range(1, self.cfg.num_epochs + 1):
             for batch in tqdm(self.train_loader, desc=f"epoch {epoch}", dynamic_ncols=True):
                 loss = self._train_step(batch)
+                if self.writer is not None:
+                    self.writer.add_scalar("Loss/train", loss, self.global_step)
                 if (self.cfg.eval_every_n_steps > 0
                         and self.global_step % self.cfg.eval_every_n_steps == 0):
                     auc, ll = self._evaluate()
