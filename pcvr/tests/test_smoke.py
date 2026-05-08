@@ -21,6 +21,9 @@ def test_train_and_infer_smoke(synth_data_root, tmp_path, monkeypatch):
     from src.trainer import Trainer
     from src.audit import audit_single_model
 
+    # rank_mixer_mode="ffn_only" skips the d_model % T == 0 constraint —
+    # appropriate for a smoke test where we just need a forward pass to run,
+    # not match the production rank-mixer arithmetic.
     cfg = Config(
         d_model=8, emb_dim=8, num_queries=1, num_hyformer_blocks=1, num_heads=2,
         batch_size=8, num_workers=0, buffer_batches=0,
@@ -28,6 +31,7 @@ def test_train_and_infer_smoke(synth_data_root, tmp_path, monkeypatch):
         valid_ratio=0.2, num_epochs=1, patience=2,
         ns_tokenizer_type="rankmixer",
         user_ns_tokens=2, item_ns_tokens=2,
+        rank_mixer_mode="ffn_only",
         use_bf16=False,            # CPU friendly
         warmup_steps=2, total_steps_hint=10, min_lr_factor=0.1,
         eval_every_n_steps=0,

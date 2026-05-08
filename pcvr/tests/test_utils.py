@@ -22,7 +22,11 @@ def test_set_seed_warns_if_called_after_torch_imported(monkeypatch):
 
 
 @pytest.mark.parametrize("logits,labels,expected_min,expected_max", [
-    ([0.0], [1.0], 0.6, 0.8),
+    # logit=0, y=1, alpha=0.25, gamma=2 -> p=0.5, p_t=0.5, focal_w=0.25,
+    # alpha_t=0.25, bce=ln(2)~=0.693 -> loss = 0.25*0.25*0.693 ~= 0.0433.
+    # Original spec range [0.6, 0.8] was wrong (forgot to apply focal/alpha
+    # weighting). Range [0.04, 0.05] is the correct expected band.
+    ([0.0], [1.0], 0.04, 0.05),
     ([10.0], [1.0], 0.0, 0.001),
     ([-10.0], [0.0], 0.0, 0.001),
 ])
