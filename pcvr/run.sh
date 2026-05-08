@@ -7,4 +7,4 @@ export PYTHONHASHSEED=42
 export CUBLAS_WORKSPACE_CONFIG=:4096:8
 export PYTHONPATH="${SCRIPT_DIR}:${PYTHONPATH:-}"
 
-python3 -u "${SCRIPT_DIR}/train.py" --config baseline "$@"
+python3 -u "${SCRIPT_DIR}/train.py" --config first_submission "$@"
