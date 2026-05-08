@@ -20,9 +20,16 @@ import gc
 import numpy as np
 import pyarrow as pa
 import pyarrow.parquet as pq
-import torch
-import torch.multiprocessing
-from torch.utils.data import IterableDataset, DataLoader
+try:
+    import torch
+    import torch.multiprocessing
+    from torch.utils.data import IterableDataset, DataLoader
+    _TORCH_AVAILABLE = True
+except ImportError:  # pragma: no cover
+    torch = None  # type: ignore[assignment]
+    IterableDataset = object  # type: ignore[assignment,misc]
+    DataLoader = None  # type: ignore[assignment]
+    _TORCH_AVAILABLE = False
 from typing import Any, Dict, Iterator, List, Optional, Tuple
 
 # numpy.typing is available since numpy >= 1.20; on older numpy fall back to a
@@ -104,7 +111,8 @@ class FeatureSchema:
 
 # Use filesystem-based tensor sharing (instead of /dev/shm) to avoid running
 # out of shared memory when many DataLoader workers are active.
-torch.multiprocessing.set_sharing_strategy('file_system')
+if _TORCH_AVAILABLE:
+    torch.multiprocessing.set_sharing_strategy('file_system')
 
 # Time-delta bucket boundaries (64 edges -> 65 buckets: 0=padding, 1..64).
 BUCKET_BOUNDARIES = np.array([
@@ -761,3 +769,61 @@ def get_pcvr_data(
                  f"batch_size={batch_size}, buffer_batches={buffer_batches}")
 
     return train_loader, valid_loader, train_dataset
+
+
+# ─────────────────────────── Validators (PCVR v0) ────────────────────────────
+
+
+def _row_group_timestamps(parquet_path: str) -> List[Tuple[int, int]]:
+    """Return ``[(min_ts, max_ts), ...]`` per Row Group, in glob-sorted file order.
+
+    Reads only the ``timestamp`` column for speed.
+    """
+    import glob as _glob
+    files = (sorted(_glob.glob(os.path.join(parquet_path, "*.parquet")))
+             if os.path.isdir(parquet_path) else [parquet_path])
+    out: List[Tuple[int, int]] = []
+    for f in files:
+        pf = pq.ParquetFile(f)
+        for i in range(pf.metadata.num_row_groups):
+            tbl = pf.read_row_group(i, columns=["timestamp"])
+            ts = tbl.column("timestamp").to_numpy()
+            out.append((int(ts.min()), int(ts.max())))
+    return out
+
+
+def assert_time_split_monotonic(
+    parquet_path: str, valid_ratio: float = 0.10
+) -> Dict[str, Any]:
+    """Verify the train/valid row-group boundary is in time order.
+
+    The Tencent rulebook mandates a time-based split. The starter kit splits by
+    the tail ``valid_ratio`` of row groups in glob-sorted order — which only
+    yields a true time split if row groups are themselves time-sorted on disk.
+    This validator checks that assumption and fails loud if not.
+
+    Returns a dict ``{passed, train_max_ts, valid_min_ts, n_train_rgs, n_valid_rgs}``
+    on success; raises ValueError on failure.
+    """
+    rg_ts = _row_group_timestamps(parquet_path)
+    if not rg_ts:
+        raise ValueError(f"No row groups found under {parquet_path}")
+    n = len(rg_ts)
+    n_valid = max(1, int(n * valid_ratio))
+    n_train = n - n_valid
+    if n_train < 1:
+        raise ValueError(f"valid_ratio={valid_ratio} leaves no train row groups (n={n})")
+    train_max = max(mx for _, mx in rg_ts[:n_train])
+    valid_min = min(mn for mn, _ in rg_ts[n_train:])
+    if train_max > valid_min:
+        raise ValueError(
+            f"Time split is not monotonic: max(train ts)={train_max} > "
+            f"min(valid ts)={valid_min}. Row groups appear unsorted by time. "
+            f"Re-sort the parquet before training, or change the split strategy.")
+    return {
+        "passed": True,
+        "train_max_ts": train_max,
+        "valid_min_ts": valid_min,
+        "n_train_rgs": n_train,
+        "n_valid_rgs": n_valid,
+    }
