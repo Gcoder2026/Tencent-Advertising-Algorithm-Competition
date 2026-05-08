@@ -36,7 +36,7 @@ class Config:
     num_workers: int = 8
     buffer_batches: int = 20
     train_ratio: float = 1.0
-    valid_ratio: float = 0.10
+    valid_ratio: float = 0.05
     eval_every_n_steps: int = 0     # 0 = end-of-epoch only
 
     # ---- Model ----
@@ -63,7 +63,7 @@ class Config:
 
     # ---- Training ----
     num_epochs: int = 999
-    patience: int = 5
+    patience: int = 8
     seed: int = 42
     device: str = "cuda"
 

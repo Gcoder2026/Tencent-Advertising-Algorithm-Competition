@@ -16,5 +16,5 @@ from configs.baseline import Config as _Baseline
 @dataclass
 class Config(_Baseline):
     num_epochs: int = 3
-    patience: int = 2
+    patience: int = 4
     eval_every_n_steps: int = 2000
