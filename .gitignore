@@ -2,6 +2,9 @@
 __pycache__/
 *.pyc
 *.pyo
+*.egg-info/
+.pytest_cache/
+.ipynb_checkpoints/
 
 # Mac
 .DS_Store
@@ -9,19 +12,35 @@ __pycache__/
 # Training artifacts (regenerated per run)
 outputs/
 *.log
+runs/
+experiments.csv
 
 # Heavy data — regenerate via tools/prepare_hf_sample.py
 data_sample_1000/*.parquet
+
+# ML / submission artifacts
+*.pt
+*.pth
+*.zip
+submissions/
 
 # Local virtualenvs
 .venv/
 venv/
 env/
 
+# Build outputs
+build/
+dist/
+
 # IDE / editor
 .idea/
 .vscode/
-
-# Misc local scratch
 *.swp
 *.swo
+
+# Secrets
+.env
+
+# Claude Code session state (local-only)
+.claude/
