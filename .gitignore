@@ -1,0 +1,27 @@
+# Python
+__pycache__/
+*.pyc
+*.pyo
+
+# Mac
+.DS_Store
+
+# Training artifacts (regenerated per run)
+outputs/
+*.log
+
+# Heavy data — regenerate via tools/prepare_hf_sample.py
+data_sample_1000/*.parquet
+
+# Local virtualenvs
+.venv/
+venv/
+env/
+
+# IDE / editor
+.idea/
+.vscode/
+
+# Misc local scratch
+*.swp
+*.swo
