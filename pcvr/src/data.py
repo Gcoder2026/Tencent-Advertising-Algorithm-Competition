@@ -704,14 +704,8 @@ def get_pcvr_data(
     """
     random.seed(seed)
 
-    import glob as _glob
-    pq_files = sorted(_glob.glob(os.path.join(data_dir, '*.parquet')))
-
-    rg_info = []
-    for f in pq_files:
-        pf = pq.ParquetFile(f)
-        for i in range(pf.metadata.num_row_groups):
-            rg_info.append((f, i, pf.metadata.row_group(i).num_rows))
+    sorted_rgs = _collect_row_groups_sorted_by_time(data_dir)
+    rg_info = [(r[0], r[1], r[2]) for r in sorted_rgs]
     total_rgs = len(rg_info)
 
     n_valid_rgs = max(1, int(total_rgs * valid_ratio))
@@ -774,22 +768,32 @@ def get_pcvr_data(
 # ─────────────────────────── Validators (PCVR v0) ────────────────────────────
 
 
-def _row_group_timestamps(parquet_path: str) -> List[Tuple[int, int]]:
-    """Return ``[(min_ts, max_ts), ...]`` per Row Group, in glob-sorted file order.
-
-    Reads only the ``timestamp`` column for speed.
+def _collect_row_groups_sorted_by_time(
+    parquet_path: str,
+) -> List[Tuple[str, int, int, Tuple[int, int]]]:
+    """Return ``[(file_path, rg_index, n_rows, (min_ts, max_ts)), ...]`` sorted
+    by RG-level min timestamp (ascending). Reads only the ``timestamp`` column
+    via parquet metadata-light path (no full row scan).
     """
     import glob as _glob
     files = (sorted(_glob.glob(os.path.join(parquet_path, "*.parquet")))
              if os.path.isdir(parquet_path) else [parquet_path])
-    out: List[Tuple[int, int]] = []
+    out: List[Tuple[str, int, int, Tuple[int, int]]] = []
     for f in files:
         pf = pq.ParquetFile(f)
         for i in range(pf.metadata.num_row_groups):
+            n_rows = pf.metadata.row_group(i).num_rows
             tbl = pf.read_row_group(i, columns=["timestamp"])
             ts = tbl.column("timestamp").to_numpy()
-            out.append((int(ts.min()), int(ts.max())))
+            out.append((f, i, n_rows, (int(ts.min()), int(ts.max()))))
+    out.sort(key=lambda x: x[3][0])  # sort by min_ts
     return out
+
+
+def _row_group_timestamps(parquet_path: str) -> List[Tuple[int, int]]:
+    """Return ``[(min_ts, max_ts), ...]`` per Row Group, sorted by min_ts."""
+    rgs = _collect_row_groups_sorted_by_time(parquet_path)
+    return [r[3] for r in rgs]
 
 
 def assert_time_split_monotonic(

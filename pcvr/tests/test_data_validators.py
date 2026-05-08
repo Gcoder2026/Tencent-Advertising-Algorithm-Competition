@@ -125,3 +125,32 @@ def test_sequence_history_leak_probe_runs(synth_data_root):
     # Synthetic seq timestamps are STRICTLY before the row's ts (offset back),
     # so future-event count should be 0.
     assert res["n_future_events"] == 0
+
+
+def test_collect_row_groups_sorted_by_time_orders_by_min_ts(tmp_path):
+    """Build two unsorted parquets and verify the helper returns time-sorted RGs."""
+    import numpy as np
+    import pyarrow as pa
+    import pyarrow.parquet as _pq
+    from src.data import _collect_row_groups_sorted_by_time
+
+    # File A: ts=[100..120] (later)
+    tbl_a = pa.table({
+        "user_id": [f"u{i}" for i in range(20)],
+        "timestamp": list(range(100, 120)),
+        "label_type": [1] * 20,
+    })
+    _pq.write_table(tbl_a, tmp_path / "part-00001.parquet", row_group_size=10)
+    # File B: ts=[0..20] (earlier — but sorted glob lists it second)
+    tbl_b = pa.table({
+        "user_id": [f"u{i}" for i in range(20)],
+        "timestamp": list(range(0, 20)),
+        "label_type": [1] * 20,
+    })
+    _pq.write_table(tbl_b, tmp_path / "part-00002.parquet", row_group_size=10)
+
+    rgs = _collect_row_groups_sorted_by_time(str(tmp_path))
+    # Should be sorted by min_ts ascending: [0, 10, 100, 110]
+    min_ts_seq = [r[3][0] for r in rgs]
+    assert min_ts_seq == sorted(min_ts_seq), f"got {min_ts_seq}"
+    assert min_ts_seq[0] == 0  # earliest first
