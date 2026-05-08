@@ -53,3 +53,15 @@ def test_load_refuses_globs(tmp_path):
     from src.checkpoint import load_state_dict
     with pytest.raises(ValueError, match="single"):
         load_state_dict(str(tmp_path / "global_step*"))
+
+
+def test_load_state_dict_strips_module_prefix(tmp_path):
+    torch = pytest.importorskip("torch")
+    from src.checkpoint import load_state_dict
+    sd_with_prefix = {"module.weight": torch.zeros(3), "module.bias": torch.zeros(2)}
+    ck = tmp_path / "ck"
+    ck.mkdir()
+    torch.save(sd_with_prefix, str(ck / "model.pt"))
+    sd = load_state_dict(str(ck))
+    assert "weight" in sd and "module.weight" not in sd
+    assert "bias" in sd and "module.bias" not in sd

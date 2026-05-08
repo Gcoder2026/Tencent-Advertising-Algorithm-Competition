@@ -136,6 +136,9 @@ def load_state_dict(ckpt_dir: str):
     if not os.path.isfile(pt):
         raise FileNotFoundError(f"No model.pt under {ckpt_dir}")
     sd = torch.load(pt, map_location="cpu", weights_only=True)
+    # Defensive: strip 'module.' prefix from DDP-wrapped state_dicts.
+    if any(k.startswith("module.") for k in sd):
+        sd = {(k[len("module."):] if k.startswith("module.") else k): v for k, v in sd.items()}
     _assert_single_state_dict(sd)
     return sd
 
