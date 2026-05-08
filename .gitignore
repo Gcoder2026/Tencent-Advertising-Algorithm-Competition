@@ -8,3 +8,11 @@ experiments.csv
 .venv/
 build/
 dist/
+
+# ML / submission artifacts
+*.pt
+*.pth
+runs/
+submissions/
+*.zip
+.env
