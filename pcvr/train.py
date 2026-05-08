@@ -81,6 +81,19 @@ def main() -> None:
         logging.info(f"label-rate sanity OK: {res}")
     except Exception as e:
         logging.warning(f"label-rate validator skipped/failed: {e}")
+    # Sequence-leak probe — soft-warn if any future events bleed into valid sequences.
+    try:
+        from src.data import sequence_history_leak_probe
+        probe = sequence_history_leak_probe(
+            cfg.data_dir, cfg.schema_path, valid_ratio=cfg.valid_ratio, n_samples=200,
+        )
+        logging.info(f"sequence-leak probe: {probe}")
+        if probe.get("n_future_events", 0) > 0:
+            logging.warning(
+                f"FOUND {probe['n_future_events']} future events in {probe['n_sampled']} "
+                f"sampled valid rows — sequences may be leaking labels.")
+    except Exception as e:
+        logging.warning(f"sequence-leak probe skipped/failed: {e}")
 
     # ---- Data ----
     train_loader, valid_loader, ds = get_pcvr_data(
@@ -158,6 +171,20 @@ def main() -> None:
     )
     best_dir = trainer.train()
     logging.info(f"Training finished; best={best_dir}")
+    # OOB-rate guard — log accumulated OOB stats at end of training.
+    try:
+        from src.data import oob_rate_check
+        eval_stats = getattr(ds, "_oob_stats", {})
+        if eval_stats:
+            n_rows_seen = max(1, ds.num_rows)
+            try:
+                oob_rate_check(eval_stats, train_stats=None, n_rows=n_rows_seen,
+                               threshold_abs=0.05, threshold_ratio=10.0)
+                logging.info(f"OOB-rate guard OK: {len(eval_stats)} features checked")
+            except ValueError as e:
+                logging.warning(f"OOB rate guard tripped (logging only, not aborting): {e}")
+    except Exception as e:
+        logging.warning(f"OOB-rate logging skipped: {e}")
     if writer is not None:
         writer.close()
 
