@@ -16,3 +16,6 @@ runs/
 submissions/
 *.zip
 .env
+
+# Claude Code session state (local-only)
+.claude/
