@@ -827,3 +827,39 @@ def assert_time_split_monotonic(
         "n_train_rgs": n_train,
         "n_valid_rgs": n_valid,
     }
+
+
+def assert_label_rate_sane(
+    parquet_path: str,
+    sample_size: int = 100_000,
+    min_rate: float = 0.001,
+    max_rate: float = 0.10,
+) -> Dict[str, Any]:
+    """Verify the positive-class rate (``label_type == 2``) lies in a sane band.
+
+    PCVR is a low-positive-rate task; rates outside [0.1%, 10%] usually mean a
+    label-mapping bug. Reads up to ``sample_size`` rows from the head of the
+    glob-sorted file list.
+    """
+    import glob as _glob
+    files = (sorted(_glob.glob(os.path.join(parquet_path, "*.parquet")))
+             if os.path.isdir(parquet_path) else [parquet_path])
+    seen, pos = 0, 0
+    for f in files:
+        pf = pq.ParquetFile(f)
+        for batch in pf.iter_batches(batch_size=8192, columns=["label_type"]):
+            arr = batch.column(0).fill_null(0).to_numpy(zero_copy_only=False)
+            seen += len(arr)
+            pos += int((arr == 2).sum())
+            if seen >= sample_size:
+                break
+        if seen >= sample_size:
+            break
+    if seen == 0:
+        raise ValueError(f"No rows under {parquet_path}")
+    rate = pos / seen
+    if not (min_rate <= rate <= max_rate):
+        raise ValueError(
+            f"Sample positive rate (label_type==2) is {rate:.4f} on {seen} rows; "
+            f"expected within [{min_rate}, {max_rate}]. Verify the label mapping.")
+    return {"passed": True, "pos_rate": rate, "n_seen": seen, "n_pos": pos}

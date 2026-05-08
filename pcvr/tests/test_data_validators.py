@@ -71,3 +71,25 @@ def test_time_split_monotonic_fails_on_unsorted(tmp_path):
     from src.data import assert_time_split_monotonic
     with pytest.raises(ValueError, match="not monotonic"):
         assert_time_split_monotonic(str(tmp_path), valid_ratio=0.3)
+
+
+def test_label_rate_sane_passes_on_balanced(synth_data_root):
+    from src.data import assert_label_rate_sane
+    res = assert_label_rate_sane(synth_data_root["data_dir"], min_rate=0.001, max_rate=0.99)
+    assert res["passed"] is True
+    assert 0.001 < res["pos_rate"] < 0.99
+
+
+def test_label_rate_sane_fails_when_all_negative(tmp_path):
+    import numpy as np, pyarrow as pa, pyarrow.parquet as pq
+    n = 100
+    table = pa.table({
+        "user_id": [f"u{i}" for i in range(n)],
+        "timestamp": list(range(n)),
+        "label_type": [1] * n,
+    })
+    p = tmp_path / "part-00000.parquet"
+    pq.write_table(table, p, row_group_size=20)
+    from src.data import assert_label_rate_sane
+    with pytest.raises(ValueError, match="positive rate"):
+        assert_label_rate_sane(str(tmp_path), min_rate=0.001, max_rate=0.99)
