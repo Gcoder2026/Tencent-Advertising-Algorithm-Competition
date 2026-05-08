@@ -153,6 +153,8 @@ class Trainer:
         self.dense_opt.load_state_dict(st["dense_opt"])
         if self.sparse_opt is not None and st.get("sparse_opt") is not None:
             self.sparse_opt.load_state_dict(st["sparse_opt"])
+        # Stash sched state to apply after the scheduler is built in train().
+        self._pending_sched_state = st.get("dense_sched")
         self.global_step = int(st.get("global_step", 0))
         random.setstate(st["py_rng"])
         np.random.set_state(st["np_rng"])
@@ -166,6 +168,7 @@ class Trainer:
             "global_step": self.global_step,
             "dense_opt": self.dense_opt.state_dict(),
             "sparse_opt": self.sparse_opt.state_dict() if self.sparse_opt else None,
+            "dense_sched": self.dense_sched.state_dict() if self.dense_sched is not None else None,
             "py_rng": random.getstate(),
             "np_rng": np.random.get_state(),
             "torch_rng": torch.get_rng_state(),
@@ -212,9 +215,10 @@ class Trainer:
         all_labels: List[torch.Tensor] = []
         for batch in tqdm(self.valid_loader, desc="valid", dynamic_ncols=True):
             device_batch = _batch_to_device(batch, self.device)
-            with self._autocast():
-                inputs = _make_model_input(device_batch, self.device)
-                logits, _ = self.model.predict(inputs)
+            # No autocast in validation: matches infer.py precision so that
+            # early-stopping AUC tracks leaderboard AUC.
+            inputs = _make_model_input(device_batch, self.device)
+            logits, _ = self.model.predict(inputs)
             all_logits.append(logits.detach().float().squeeze(-1).cpu())
             all_labels.append(device_batch["label"].detach().cpu())
         self.model.train()
@@ -268,6 +272,11 @@ class Trainer:
             self.dense_opt, warmup_steps=self.cfg.warmup_steps,
             total_steps=total_steps, min_lr_factor=self.cfg.min_lr_factor,
         )
+        # Restore scheduler state if we resumed; saved in _train_state_blob().
+        pending = getattr(self, "_pending_sched_state", None)
+        if pending is not None:
+            self.dense_sched.load_state_dict(pending)
+            self._pending_sched_state = None
 
         self.model.train()
         for epoch in range(1, self.cfg.num_epochs + 1):
