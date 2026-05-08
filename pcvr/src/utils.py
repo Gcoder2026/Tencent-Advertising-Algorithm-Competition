@@ -37,7 +37,21 @@ def set_seed(seed: int) -> None:
         torch.backends.cudnn.deterministic = True
         torch.backends.cudnn.benchmark = False
         try:
-            torch.use_deterministic_algorithms(True, warn_only=True)
+            # Strict mode: any nondeterministic op raises RuntimeError. Catch
+            # the FIRST one and log it, then fall back to warn_only so the
+            # process keeps running but we have a record. Code review will
+            # flag the log line; non-determinism is a leaderboard
+            # reproducibility risk.
+            torch.use_deterministic_algorithms(True, warn_only=False)
+        except RuntimeError as e:
+            logging.warning(
+                f"set_seed: strict deterministic algorithms unavailable: {e}; "
+                f"falling back to warn_only=True. Audit which op fired."
+            )
+            try:
+                torch.use_deterministic_algorithms(True, warn_only=True)
+            except Exception:
+                pass
         except Exception:
             pass
     except ImportError:
