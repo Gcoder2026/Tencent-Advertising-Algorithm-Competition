@@ -893,3 +893,58 @@ def oob_rate_check(
         )
         raise ValueError(msg)
     return {"passed": True, "n_features_checked": len(eval_stats)}
+
+
+def sequence_history_leak_probe(
+    parquet_path: str,
+    schema_path: str,
+    valid_ratio: float = 0.10,
+    n_samples: int = 1000,
+) -> Dict[str, Any]:
+    """Sample valid-split rows and count sequence events whose timestamp is at
+    or after the row's own timestamp (i.e., would-be-leaked events).
+
+    A clean dataset has n_future_events == 0 across many samples. Non-zero ⇒
+    sequences are not strictly historical and the dataset must enforce
+    ``seq_event_ts < row_ts`` per row.
+    """
+    import glob as _glob
+    with open(schema_path, "r", encoding="utf-8") as f:
+        schema = json.load(f)
+    seq_cfg = schema["seq"]
+    ts_cols = []
+    for domain, cfg in seq_cfg.items():
+        ts_fid = cfg.get("ts_fid")
+        if ts_fid is not None:
+            ts_cols.append(f"{cfg['prefix']}_{ts_fid}")
+
+    files = (sorted(_glob.glob(os.path.join(parquet_path, "*.parquet")))
+             if os.path.isdir(parquet_path) else [parquet_path])
+    rg_info = []
+    for f in files:
+        pf = pq.ParquetFile(f)
+        for i in range(pf.metadata.num_row_groups):
+            rg_info.append((f, i, pf.metadata.row_group(i).num_rows))
+    n = len(rg_info)
+    n_valid = max(1, int(n * valid_ratio))
+    valid_rgs = rg_info[n - n_valid:]
+
+    sampled = 0
+    future = 0
+    cols_to_read = ["timestamp"] + ts_cols
+    for f, idx, _nrows in valid_rgs:
+        if sampled >= n_samples:
+            break
+        pf = pq.ParquetFile(f)
+        tbl = pf.read_row_group(idx, columns=cols_to_read)
+        n_in_rg = len(tbl)
+        take = min(n_samples - sampled, n_in_rg)
+        ts = tbl.column("timestamp").to_pylist()[:take]
+        seq_ts_per_col = [tbl.column(c).to_pylist()[:take] for c in ts_cols]
+        for r in range(take):
+            row_ts = ts[r]
+            for col_lists in seq_ts_per_col:
+                events = col_lists[r] or []
+                future += sum(1 for e in events if e is not None and e >= row_ts)
+        sampled += take
+    return {"n_sampled": sampled, "n_future_events": future, "ts_cols": ts_cols}

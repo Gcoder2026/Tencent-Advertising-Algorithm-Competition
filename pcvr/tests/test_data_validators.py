@@ -110,3 +110,18 @@ def test_oob_rate_check_fails_on_spike():
     n_rows = 1000
     with pytest.raises(ValueError, match="OOB"):
         oob_rate_check(eval_stats, train_stats, n_rows, threshold_abs=0.01, threshold_ratio=2.0)
+
+
+def test_sequence_history_leak_probe_runs(synth_data_root):
+    from src.data import sequence_history_leak_probe
+    res = sequence_history_leak_probe(
+        synth_data_root["data_dir"],
+        synth_data_root["schema_path"],
+        valid_ratio=0.2,
+        n_samples=10,
+    )
+    assert "n_sampled" in res
+    assert "n_future_events" in res
+    # Synthetic seq timestamps are STRICTLY before the row's ts (offset back),
+    # so future-event count should be 0.
+    assert res["n_future_events"] == 0

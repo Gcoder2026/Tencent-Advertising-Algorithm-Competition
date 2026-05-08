@@ -77,9 +77,10 @@ def synth_data_root(tmp_path):
         for fid, vocab in cfg["features"]:
             seq_len_per_row = rng.integers(5, 20, size=n)
             if vocab == 0:
-                # timestamp column: monotonic offsets back from row ts
+                # timestamp column: monotonic offsets back from row ts (start at j=1
+                # so all seq events are STRICTLY before the row timestamp)
                 cols[f"{prefix}_{fid}"] = [
-                    [int(cols["timestamp"][i] - 60 * j) for j in range(seq_len_per_row[i])]
+                    [int(cols["timestamp"][i] - 60 * j) for j in range(1, seq_len_per_row[i] + 1)]
                     for i in range(n)
                 ]
             else:
