@@ -31,13 +31,13 @@ bash ../v1/run_sample.sh   # uses run.sh from the version you cd'd into
 v1/                      # baseline as submitted on 2026-05-06
   dataset.py model.py train.py trainer.py utils.py infer.py
   run.sh run_sample.sh ns_groups.json
-  submission_v1.zip      # platform upload (training side)
+  training_v1.zip        # platform upload (training side)
   evaluation_v1.zip      # platform upload (inference side)
 
 v2/                      # next submission staging (transformer + temporal split)
   dataset.py model.py train.py trainer.py utils.py infer.py
   run.sh ns_groups.json
-  submission_v2.zip      # ready to upload
+  training_v2.zip        # ready to upload
   evaluation_v2.zip      # ready to upload
 
 tools/
@@ -70,7 +70,7 @@ Each submission is two zip files uploaded to the Tencent Angel platform:
 
 | Zip | Contents | Used for |
 |---|---|---|
-| `submission_vN.zip` | `train.py`, `trainer.py`, `model.py`, `dataset.py`, `utils.py`, `run.sh`, `ns_groups.json` | Training container |
+| `training_vN.zip` | `train.py`, `trainer.py`, `model.py`, `dataset.py`, `utils.py`, `run.sh`, `ns_groups.json` | Training container |
 | `evaluation_vN.zip` | `infer.py`, `dataset.py`, `model.py`, `ns_groups.json` | Inference container (sandboxed, no network) |
 
 The platform calls `infer.py:main()` with `MODEL_OUTPUT_PATH` / `EVAL_DATA_PATH` / `EVAL_RESULT_PATH` env vars. Output is a `result.json` with one sigmoid score per (user_id, item_id) row.
@@ -108,7 +108,7 @@ cd v3
 # 2. Make your one targeted change (e.g. edit run.sh or dataset.py)
 
 # 3. Bundle the zips with the v1/v2 file layout
-zip -j submission_v3.zip dataset.py model.py train.py trainer.py utils.py ns_groups.json run.sh
+zip -j training_v3.zip dataset.py model.py train.py trainer.py utils.py ns_groups.json run.sh
 zip -j evaluation_v3.zip infer.py dataset.py model.py ns_groups.json
 
 # 4. Smoke test, then commit
