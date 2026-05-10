@@ -1,14 +1,21 @@
-# PCVR Roadmap v2 — post-merge reality (2026-05-09)
+# PCVR Roadmap v2 — post-merge reality (originally 2026-05-09, refreshed 2026-05-10)
 
 **Supersedes:** `2026-05-08-pcvr-roadmap-v1.md` (the original 14-day sprint roadmap, written assuming a 3-person team with sole project ownership). Roadmap v1's v0 anchor + 5-agent specialist findings + critic-integrated revisions remain valid where not contradicted here.
 
 **Updated context (vs. v1):**
-- **Today: 2026-05-09.** Round 1 deadline: 2026-05-23 AOE → **14 days remaining**.
+- **Today: 2026-05-10.** Round 1 deadline: 2026-05-23 AOE → **13 days remaining**.
 - **Team-size correction:** roadmap v1 assumed 3 students × 3 streams. Actual: **you alone + one teammate (Gcoder2026) working in parallel on a separate branch.** Stream A/B/C breakdown collapses to one-stream-at-a-time for you, with the teammate as an independent contributor.
-- **Cross-team flow established:** local `main` → push → `jw2333-null/taac-pcvr` (private solo). Local `pcvr-jw2333` → push → `Gcoder2026/.../pcvr-jw2333` (merged, visible to teammate). See [`pcvr/ARCHITECTURE.md`](../../../pcvr/ARCHITECTURE.md) → "Branches" section if you want me to add one.
+- **Cross-team flow established:** local `main` → push → `jw2333-null/taac-pcvr` (private solo). Local `pcvr-jw2333` → push → `Gcoder2026/.../main` (merged, now the canonical default branch on the team repo). The `pcvr-jw2333` branch on the team repo is now a redundant mirror of `main`.
 - **Phase 1 of merge plan v1.1 applied** locally as 8 commits (37/37 tests pass on conda env `taac`). Ready-to-submit v0.5 zips archived under [`submissions/2026-05-09_v0.5_post-phase1/`](../../../submissions/2026-05-09_v0.5_post-phase1/) — **not yet submitted.**
 - **Anchor scores:** your v0 = AUC **0.81144** (leaderboard). teammate's v1 = AUC 0.807 (per their README; submission filename was wrong, anchor is suspect — see merge plan v1.1).
 - **Generalization gap diagnosis pending:** local valid AUC ~0.86 vs leaderboard 0.81144 = ~0.05 gap. Most likely sequence-history leakage; the wired `sequence_history_leak_probe` validator in `train.py` will report on next training run.
+
+## Recent milestones (2026-05-10 refresh)
+
+- ✅ **GitHub attribution fix.** All 45 of your authored commits were rewritten via `git filter-repo` from the malformed email `jw2333-null+jw2333-null@users.noreply.github.com` to the correct GitHub-privacy format `263952481+jw2333-null@users.noreply.github.com`. Force-pushed to both `Gcoder2026/.../main` (with `--force-with-lease`) and `jw2333-null/taac-pcvr/main`. GitHub Contributors page now correctly shows `jw2333-null` with 45 commits, `Gcoder2026` with 6.
+- ✅ **Teammate sync confirmed** before the rewrite — no work was overwritten.
+- ✅ **Local git config corrected** (`user.name=jw2333-null`, `user.email=263952481+jw2333-null@users.noreply.github.com`) so future commits are properly attributed automatically.
+- 🟨 **Stale on-disk state** to be aware of: the rewrite changed every commit SHA, so any commit references in older docs (e.g. `c565b36` in merge plan v1.1) no longer resolve. Treat them as historical labels, not git refs.
 
 ---
 
@@ -142,14 +149,15 @@ The **single highest-information submission** is A1 (v0.5 with wired validators)
 
 ---
 
-## Submission slot budget
+## Submission slot budget (refreshed 2026-05-10)
 
 | Used | Date | Score |
 |---|---|---|
 | 1 | 2026-05-08 (v0 baseline) | 0.81144 |
-| **2** estimated | 2026-05-09 (Phase A1 + A2 = 3 slots) | TBD |
+| 0 | 2026-05-09 | (no submissions; merge work + email rewrite consumed the day) |
+| 0–3 estimated | 2026-05-10 (Phase A1 + A2 = up to 3 slots) | TBD |
 
-After Phase A: ~36 slots remain over 13 days = ~2.7/day average. Adequate budget for B/C without scrambling.
+Slots used so far: **1 of ~42**. Slots remaining over 13 days = ~3/day budget. Phase A can plausibly run today; Phases B/C still have plenty of runway.
 
 ---
 

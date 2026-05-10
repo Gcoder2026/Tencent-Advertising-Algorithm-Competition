@@ -40,7 +40,7 @@ v2/                      # next submission staging (transformer + temporal split
   training_v2.zip        # ready to upload
   evaluation_v2.zip      # ready to upload
 
-pcvr/                    # alternative LAYERED architecture (branch pcvr-jw2333 only)
+pcvr/                    # alternative LAYERED architecture (now on main as of 2026-05-10)
   configs/{baseline,first_submission}.py
   src/{data,model,trainer,optimizers,checkpoint,audit,utils}.py
   tests/                 # 37 pytest tests, all passing on conda env
@@ -50,10 +50,11 @@ pcvr/                    # alternative LAYERED architecture (branch pcvr-jw2333 
   build_step{1,3}_submission.py
   README.md ARCHITECTURE.md requirements.txt pyproject.toml Makefile
 
-docs/superpowers/plans/   # decision docs (branch pcvr-jw2333 only)
+docs/superpowers/plans/   # decision docs (on main as of 2026-05-10)
   2026-05-08-pcvr-architecture-v0.md   # build plan, executed
   2026-05-08-pcvr-roadmap-v1.md        # 14-day Round-1 sprint roadmap, critic-revised
-  2026-05-08-pcvr-merge-plan-v1.md     # this branch's merge plan v1.1
+  2026-05-08-pcvr-merge-plan-v1.md     # cross-team merge plan v1.1
+  2026-05-09-pcvr-roadmap-v2.md        # post-merge roadmap (current; 13 days remaining)
 
 tools/
   prepare_hf_sample.py   # downloads + rewrites the HF demo parquet
@@ -68,7 +69,7 @@ README.md
 
 Each `vN/` folder is a self-contained snapshot of the source for one platform submission. **Do not edit code in `v1/`** — it's the reference baseline. New work goes into a fresh `vN+1/` so we can diff and roll back per submission.
 
-The `pcvr/` folder (only present on branch `pcvr-jw2333`) is an alternative layered architecture with the same starter-kit ancestor, but split into `configs/`, `src/`, `tests/` for a more modular development style. Coexists with `vN/`; doesn't replace them.
+The `pcvr/` folder is an alternative layered architecture with the same starter-kit ancestor, but split into `configs/`, `src/`, `tests/` for a more modular development style. Coexists with `vN/`; doesn't replace them. Now on `main` as of 2026-05-10 (was previously on a separate `pcvr-jw2333` branch; merged via fast-forward push).
 
 ## The task in one paragraph
 
@@ -102,13 +103,14 @@ The platform calls `infer.py:main()` with `MODEL_OUTPUT_PATH` / `EVAL_DATA_PATH`
 
 ## Improvement roadmap
 
-The current plan lives in `~/.claude/plans/this-is-the-official-memoized-zebra.md` (local — not committed) and at `docs/superpowers/plans/` on branch `pcvr-jw2333`. High-level:
+The current plan lives in `~/.claude/plans/this-is-the-official-memoized-zebra.md` (local — not committed) and at `docs/superpowers/plans/` on `main`. The most recent committed plan is `2026-05-09-pcvr-roadmap-v2.md` (refreshed 2026-05-10). High-level:
 
 | Version | Status | Change | Goal |
 |---|---|---|---|
 | **v1** | Submitted | Baseline (`swiglu` encoder, row-group val split) | Establish floor |
 | **v2** | Ready | `swiglu` → `transformer` sequence encoder; timestamp-sorted train/val split | First real attention; trustworthy local val |
-| **pcvr** | Submitted (branch) | Layered architecture port + bf16 + cosine+warmup + 4 wired validators + single-model audit | AUC 0.81144 |
+| **pcvr v0** | Submitted (on `main`) | Layered architecture port + bf16 + cosine+warmup + 4 wired validators + single-model audit | AUC **0.81144** (anchor) |
+| pcvr v0.5 | Built; not yet submitted | Phase-1 merges: validators wired into `train.py`, `valid_ratio 0.05`, patience bumps, DDP-prefix strip | AUC TBD |
 | v3 | Pending | Longer sequences (`seq_*:256/512`) + RoPE | Capture longer-range dependencies |
 | v4 | Pending | Focal loss + multi-task click head | Address class imbalance + free auxiliary signal |
 | v5 | Pending | LR warmup/cosine + epoch-2 sparse re-init + mid-epoch eval | Training-loop hygiene |
@@ -116,9 +118,9 @@ The current plan lives in `~/.claude/plans/this-is-the-official-memoized-zebra.m
 
 Each version is one CLI/code change isolated for clean attribution; we **never** bundle multiple unrelated levers into one submission.
 
-## Single-model rule enforcement (`pcvr/` branch)
+## Single-model rule enforcement (`pcvr/`)
 
-The competition forbids ensembling, weight averaging (SWA/EMA), multi-checkpoint averaging, multi-seed averaging, and stacking. The `pcvr/` branch enforces this in code:
+The competition forbids ensembling, weight averaging (SWA/EMA), multi-checkpoint averaging, multi-seed averaging, and stacking. The `pcvr/` codebase enforces this in code:
 
 - `pcvr/src/checkpoint.py:_assert_single_state_dict` rejects state_dicts with keys starting with `ema_`, `swa_`, `shadow_`, `averaged_`, `polyak_`.
 - `pcvr/src/checkpoint.py:load_state_dict` refuses paths containing glob characters (no accidental "average all matching checkpoints" patterns).
@@ -154,13 +156,15 @@ git push
 - [v2/model.py](v2/model.py) — `PCVRHyFormer` architecture (NS tokenizer, sequence encoders, HyFormer blocks, RankMixer)
 - [v2/trainer.py](v2/trainer.py) — training loop, BCE/Focal loss, AUC monitor, sparse-embedding re-init
 - [v2/infer.py](v2/infer.py) — what the Angel platform actually executes during scoring
-- (branch `pcvr-jw2333` only) [pcvr/README.md](pcvr/README.md) — layered architecture quickstart
-- (branch `pcvr-jw2333` only) [pcvr/ARCHITECTURE.md](pcvr/ARCHITECTURE.md) — design decisions doc
+- [pcvr/README.md](pcvr/README.md) — layered architecture quickstart
+- [pcvr/ARCHITECTURE.md](pcvr/ARCHITECTURE.md) — design decisions doc
+- [docs/superpowers/plans/2026-05-09-pcvr-roadmap-v2.md](docs/superpowers/plans/2026-05-09-pcvr-roadmap-v2.md) — current Round-1 plan (13 days remaining)
 
 ## Status
 
 | | Score | Inference time |
 |---|---|---|
-| v1 (submitted) | ROC-AUC 0.806713 | 381.66 s / 1800 s |
+| v1 (submitted 2026-05-06) | ROC-AUC 0.806713 | 381.66 s / 1800 s |
 | v2 (ready) | TBD | TBD |
-| pcvr (branch `pcvr-jw2333`, submitted) | ROC-AUC 0.81144 | TBD |
+| pcvr v0 (submitted 2026-05-08, now on `main`) | **ROC-AUC 0.81144** (current anchor) | TBD |
+| pcvr v0.5 (built 2026-05-09, not yet submitted) | TBD | TBD |
