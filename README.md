@@ -50,11 +50,12 @@ pcvr/                    # alternative LAYERED architecture (now on main as of 2
   build_step{1,3}_submission.py
   README.md ARCHITECTURE.md requirements.txt pyproject.toml Makefile
 
-docs/superpowers/plans/   # decision docs (on main as of 2026-05-10)
+docs/superpowers/plans/   # decision docs (on main)
   2026-05-08-pcvr-architecture-v0.md   # build plan, executed
   2026-05-08-pcvr-roadmap-v1.md        # 14-day Round-1 sprint roadmap, critic-revised
   2026-05-08-pcvr-merge-plan-v1.md     # cross-team merge plan v1.1
-  2026-05-09-pcvr-roadmap-v2.md        # post-merge roadmap (current; 13 days remaining)
+  2026-05-09-pcvr-roadmap-v2.md        # post-merge roadmap, direction-only (superseded by v3)
+  2026-05-10-pcvr-roadmap-v3-architecture.md   # CURRENT — architecture-level cards (12 fields per upgrade)
 
 tools/
   prepare_hf_sample.py   # downloads + rewrites the HF demo parquet
@@ -159,7 +160,7 @@ git push
 - [v2/infer.py](v2/infer.py) — what the Angel platform actually executes during scoring
 - [pcvr/README.md](pcvr/README.md) — layered architecture quickstart
 - [pcvr/ARCHITECTURE.md](pcvr/ARCHITECTURE.md) — design decisions doc
-- [docs/superpowers/plans/2026-05-09-pcvr-roadmap-v2.md](docs/superpowers/plans/2026-05-09-pcvr-roadmap-v2.md) — current Round-1 plan (13 days remaining)
+- [docs/superpowers/plans/2026-05-10-pcvr-roadmap-v3-architecture.md](docs/superpowers/plans/2026-05-10-pcvr-roadmap-v3-architecture.md) — **CURRENT** Round-1 plan; architecture-level cards (12 fields per upgrade)
 
 ## Status
 
