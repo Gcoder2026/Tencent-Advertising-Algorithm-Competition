@@ -12,8 +12,20 @@
 - **Team-size correction:** roadmap v1 assumed 3 students × 3 streams. Actual: **you alone + one teammate (Gcoder2026)** working in parallel. The streams collapse to one-thing-at-a-time for you; the teammate runs their own track and we port single high-value items as they emerge.
 - **Cross-team flow established:** local `main` → push → `jw2333-null/taac-pcvr` (private solo). Local `pcvr-jw2333` → push → `Gcoder2026/.../main` (merged; now the canonical default branch on the team repo).
 - **Phase 1 of merge plan v1.1 applied** — 37/37 tests pass on conda env `taac`. v0.5 zips archived under `submissions/2026-05-09_v0.5_post-phase1/` — **not yet submitted**.
-- **Anchor scores:** v0 = AUC **0.81144** (leaderboard). Teammate's v1 = AUC 0.807.
+- **Anchor: pcvr v0 = AUC 0.81144** (leaderboard). Roadmap forward-plan starts from this anchor. The three teammate experiments since (v3, v4, v5) all scored below the anchor — see "Prior attempts" below.
 - **Open diagnosis:** local valid AUC ~0.86 → leaderboard 0.81144 = ~0.05 generalization gap. Most likely sequence-history leakage; wired `sequence_history_leak_probe` will report on the next training run.
+
+## Prior attempts that regressed (2026-05-10) — data points, not new baselines
+
+The teammate landed three experiments on top of pcvr v0 between 2026-05-09 and 2026-05-10. None beat the anchor; each is a useful negative result the forward plan should respect, not repeat.
+
+| Run | What it bundled | AUC | Δ vs 0.81144 | Implication |
+|---|---|---|---|---|
+| v3 | transformer encoder + RoPE + focal loss (3 changes at once) | 0.806681 | −0.005 | At least one of the three is hurting AUC, but the bundle makes it impossible to isolate. **Future attempts on B1 / B2 / focal must be done one at a time.** |
+| v4 | continuous log-Δt time encoding | 0.797723 | −0.014 | The bucketed time encoding may have been carrying signal the continuous version is dropping, OR the implementation diverged from baseline semantics. **C3 needs a careful re-think before another attempt.** |
+| v5 | longer training only (no architecture change) | 0.797711 | −0.014 | Pure-time-budget changes don't help — the model has already converged at the v0 architecture. **"Train longer" is not a lever; capacity/architecture is.** Independently validates the A3 capacity diagnostic's importance. |
+
+The forward plan continues from pcvr v0 (0.81144). Teammate's v3/v4/v5 are preserved in git history as exploration; they don't define the roadmap's starting point.
 
 ## Recent milestones (2026-05-10 refresh)
 
@@ -109,7 +121,7 @@ The 0.05 generalization gap is the most expensive open question. Resolve it befo
 
 **Success criterion:** AUC improves over the SwiGLU baseline by a meaningful margin on local valid (check before any leaderboard submission).
 
-**Watch out for:** attention is heavier than per-position FFN. Memory and latency may force trade-offs (shorter sequences, smaller batch) that erode some of the gain.
+**Watch out for:** attention is heavier than per-position FFN. Memory and latency may force trade-offs (shorter sequences, smaller batch) that erode some of the gain. **Prior attempt (teammate v3, 2026-05-10) bundled transformer + RoPE + focal loss and regressed to 0.806681 — when retrying B1, do it in isolation so the marginal effect of the encoder swap is measurable.**
 
 **Reference:** Vaswani et al. 2017 (standard transformer self-attention).
 
@@ -125,7 +137,7 @@ The 0.05 generalization gap is the most expensive open question. Resolve it befo
 
 **Success criterion:** RoPE-on vs RoPE-off, local AUC delta ≥ 0.002. Compose with B1 if both apply.
 
-**Watch out for:** only meaningful where attention is actually used. If the SwiGLU encoder is kept (B1 not applied), RoPE only affects the cross-attention path → marginal effect.
+**Watch out for:** only meaningful where attention is actually used. If the SwiGLU encoder is kept (B1 not applied), RoPE only affects the cross-attention path → marginal effect. **Prior attempt (teammate v3) bundled RoPE with transformer encoder and focal loss; net effect was −0.005 AUC. Test RoPE in isolation against a known-good baseline before stacking with B1.**
 
 **Reference:** Su et al. 2021 (RoFormer).
 
@@ -207,7 +219,7 @@ The 0.05 generalization gap is the most expensive open question. Resolve it befo
 
 **Success criterion:** local AUC improves by ≥ 0.001.
 
-**Watch out for:** changes both the dataset path and the model's time-embedding consumer. Must verify the synthetic-data fixture still produces sensible sequences after the change (the conftest fixture was already once silently bugged on this axis — see merge plan v1.1).
+**Watch out for:** changes both the dataset path and the model's time-embedding consumer. Must verify the synthetic-data fixture still produces sensible sequences after the change (the conftest fixture was already once silently bugged on this axis — see merge plan v1.1). **Prior attempt (teammate v4, 2026-05-10) tried log-Δt and regressed substantially to 0.797723 (−0.014). Investigate before retrying — the bucketed encoding may have been carrying signal the continuous version lost, or the implementation diverged from baseline semantics. A clean retry requires a one-batch numerical comparison of bucket-vs-continuous outputs before training.**
 
 **Stage 1 zip:** training-side dataset + model change + new config.
 

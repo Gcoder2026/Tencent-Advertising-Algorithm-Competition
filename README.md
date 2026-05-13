@@ -105,16 +105,17 @@ The platform calls `infer.py:main()` with `MODEL_OUTPUT_PATH` / `EVAL_DATA_PATH`
 
 The current plan lives in `~/.claude/plans/this-is-the-official-memoized-zebra.md` (local — not committed) and at `docs/superpowers/plans/` on `main`. The most recent committed plan is `2026-05-09-pcvr-roadmap-v2.md` (refreshed 2026-05-10). High-level:
 
-| Version | Status | Change | Goal |
+| Version | Status | Change | Result |
 |---|---|---|---|
-| **v1** | Submitted | Baseline (`swiglu` encoder, row-group val split) | Establish floor |
-| **v2** | Ready | `swiglu` → `transformer` sequence encoder; timestamp-sorted train/val split | First real attention; trustworthy local val |
-| **pcvr v0** | Submitted (on `main`) | Layered architecture port + bf16 + cosine+warmup + 4 wired validators + single-model audit | AUC **0.81144** (anchor) |
-| pcvr v0.5 | Built; not yet submitted | Phase-1 merges: validators wired into `train.py`, `valid_ratio 0.05`, patience bumps, DDP-prefix strip | AUC TBD |
-| v3 | Pending | Longer sequences (`seq_*:256/512`) + RoPE | Capture longer-range dependencies |
-| v4 | Pending | Focal loss + multi-task click head | Address class imbalance + free auxiliary signal |
-| v5 | Pending | LR warmup/cosine + epoch-2 sparse re-init + mid-epoch eval | Training-loop hygiene |
-| v6 | Pending | DIN-style target-attention query generator | Replace mean-pool query seeding |
+| **v1** | Submitted 2026-05-06 | Baseline (`swiglu` encoder, row-group val split) | AUC 0.806713 |
+| **v2** | Ready (not yet submitted) | `swiglu` → `transformer` sequence encoder; timestamp-sorted train/val split | — |
+| **pcvr v0** | Submitted 2026-05-08, on `main` | Layered architecture port + bf16 + cosine+warmup + 4 wired validators + single-model audit | AUC **0.81144** ← **current anchor** |
+| pcvr v0.5 | Built 2026-05-09; not yet submitted | Phase-1 merges: validators wired into `train.py`, `valid_ratio 0.05`, patience bumps, DDP-prefix strip | TBD |
+| v3 | Tried 2026-05-10; **regressed** | Bundled: transformer encoder + RoPE + focal loss (3 changes at once) on pcvr v0 base | AUC 0.806681 (−0.005) |
+| v4 | Tried 2026-05-10; **regressed** | Continuous log-Δt time encoding on pcvr v0 base | AUC 0.797723 (−0.014) |
+| v5 | Tried 2026-05-10; **regressed** | Longer training only on pcvr v0 base | AUC 0.797711 (−0.014) |
+
+**Anchor remains pcvr v0 at AUC 0.81144.** v3/v4/v5 are useful negative results (kept in git history); the forward plan continues from v0, not from v5. See `docs/superpowers/plans/2026-05-09-pcvr-roadmap-v2.md` → "Prior attempts that regressed" for the lessons-learned per failed bundle.
 
 Each version is one CLI/code change isolated for clean attribution; we **never** bundle multiple unrelated levers into one submission.
 
@@ -162,9 +163,12 @@ git push
 
 ## Status
 
-| | Score | Inference time |
-|---|---|---|
-| v1 (submitted 2026-05-06) | ROC-AUC 0.806713 | 381.66 s / 1800 s |
-| v2 (ready) | TBD | TBD |
-| pcvr v0 (submitted 2026-05-08, now on `main`) | **ROC-AUC 0.81144** (current anchor) | TBD |
-| pcvr v0.5 (built 2026-05-09, not yet submitted) | TBD | TBD |
+| | Score | Δ vs anchor | Inference time |
+|---|---|---|---|
+| v1 (submitted 2026-05-06) | ROC-AUC 0.806713 | −0.005 | 381.66 s / 1800 s |
+| v2 (ready) | TBD | — | TBD |
+| pcvr v0 (submitted 2026-05-08, on `main`) | **ROC-AUC 0.81144** | **anchor** | TBD |
+| pcvr v0.5 (built 2026-05-09, not yet submitted) | TBD | — | TBD |
+| v3 (submitted 2026-05-10) | ROC-AUC 0.806681 | −0.005 | TBD |
+| v4 (submitted 2026-05-10) | ROC-AUC 0.797723 | −0.014 | TBD |
+| v5 (submitted 2026-05-10) | ROC-AUC 0.797711 | −0.014 | TBD |
