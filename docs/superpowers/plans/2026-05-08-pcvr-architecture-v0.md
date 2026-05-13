@@ -1,5 +1,7 @@
 # PCVR Architecture v0 Implementation Plan
 
+> **Historical doc — executed 2026-05-08.** Commands below were originally written against a specific Windows + Anaconda setup. Paths have been normalized to portable forms (`python`, project-relative paths). The plan as a whole has been **executed**; this file is preserved as a record of what was built and why. For the current forward-looking plan, see `2026-05-10-pcvr-roadmap-v3-architecture.md`.
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax.
 
 **Goal:** Build a self-contained TAAC 2026 PCVR submission scaffold under `pcvr/`, untouched starter kit kept as reference at `dafault file/`. Single-model rule auditable, reproducible, ready for first leaderboard submission.
@@ -8,14 +10,14 @@
 
 **Tech Stack:** Python 3.10 (platform) / 3.13 (local dev), PyTorch 2.7.1+cu126, pyarrow 23.0.1, numpy, scikit-learn, pytest, tqdm. PowerShell 5.1 locally.
 
-**Local Python:** `C:\Users\84447\anaconda3\python.exe`. Has numpy/pyarrow/pandas/sklearn/yaml/tqdm but **no torch**. Tests that require torch use `pytest.importorskip("torch")` and skip locally — they pass on the platform or in a torch-enabled conda env.
+**Local Python (at time of writing):** Anaconda Python 3.13 with numpy/pyarrow/pandas/sklearn/yaml/tqdm but **no torch**. Tests that require torch use `pytest.importorskip("torch")` and skip locally — they pass on the platform or in a torch-enabled conda env.
 
 ---
 
 ## File Structure
 
 ```
-D:\UCL\term 3\tencent TAAC\
+./
 ├── dafault file\                  # untouched reference, do not modify
 ├── docs\superpowers\plans\        # this plan lives here
 └── pcvr\                          # new project root
@@ -54,7 +56,7 @@ D:\UCL\term 3\tencent TAAC\
 ```
 
 Notes:
-- **Conventions used in steps below:** `$PY` ≡ `& 'C:\Users\84447\anaconda3\python.exe'`. **PowerShell** is the local shell.
+- **Conventions used in steps below:** `$PY` ≡ `python`. **PowerShell** is the local shell.
 - **Ports** (Tasks 6, 11): faithful copies of starter kit files with only minimal adjustments (label-class extraction + import paths). They use smoke tests, not TDD.
 - **New code**: TDD where practical.
 - Commits: every task ends with `git add` + `git commit`. Task 0 covers `git init`.
@@ -75,7 +77,7 @@ git init
 
 - [ ] **Step 2: Add `.gitignore` at project root.**
 
-`D:\UCL\term 3\tencent TAAC\.gitignore`:
+`./.gitignore`:
 ```
 __pycache__/
 *.pyc
@@ -118,7 +120,7 @@ Solution scaffold for the Tencent KDD Cup 2026 PCVR (post-click conversion-rate)
 - `tests/` — pytest unit + smoke tests.
 
 ## Local dev
-Anaconda Python at `C:\Users\84447\anaconda3\python.exe`. Most tests skip without torch installed; for full end-to-end create a torch-enabled env:
+Most tests skip without torch installed. For full end-to-end, create a torch-enabled conda env (Python 3.10 to match the platform):
 ```
 conda create -n taac python=3.10
 conda activate taac
@@ -248,7 +250,7 @@ def test_config_round_trips_to_dict():
 - [ ] **Step 3: Run test — expect ImportError / FAIL.**
 
 ```powershell
-& 'C:\Users\84447\anaconda3\python.exe' -m pytest pcvr/tests/test_config.py -v
+python -m pytest pcvr/tests/test_config.py -v
 ```
 Expected: collection error or fail (no Config yet).
 
@@ -387,7 +389,7 @@ class Config:
 - [ ] **Step 5: Run tests — expect PASS.**
 
 ```powershell
-& 'C:\Users\84447\anaconda3\python.exe' -m pytest pcvr/tests/test_config.py -v
+python -m pytest pcvr/tests/test_config.py -v
 ```
 Expected: 5 passed.
 
@@ -461,7 +463,7 @@ def test_bce_loss_runs():
 - [ ] **Step 3: Run — expect FAIL.**
 
 ```powershell
-& 'C:\Users\84447\anaconda3\python.exe' -m pytest pcvr/tests/test_utils.py -v
+python -m pytest pcvr/tests/test_utils.py -v
 ```
 
 - [ ] **Step 4: Implement `pcvr\src\utils.py`.**
@@ -622,7 +624,7 @@ class EarlyStopping:
 - [ ] **Step 5: Run — expect PASS (torch tests skip if torch missing).**
 
 ```powershell
-& 'C:\Users\84447\anaconda3\python.exe' -m pytest pcvr/tests/test_utils.py -v
+python -m pytest pcvr/tests/test_utils.py -v
 ```
 
 - [ ] **Step 6: Commit.**
@@ -746,7 +748,7 @@ def synth_data_root(tmp_path):
 - [ ] **Step 2: Smoke-test the fixture works.**
 
 ```powershell
-& 'C:\Users\84447\anaconda3\python.exe' -m pytest pcvr/tests/conftest.py -v --collect-only
+python -m pytest pcvr/tests/conftest.py -v --collect-only
 ```
 Expected: collected 0 items (fixtures don't run independently).
 
@@ -767,8 +769,8 @@ git commit -m "test: synthetic flattened-parquet fixture"
 
 - [ ] **Step 1: Copy starter kit dataset verbatim into `pcvr\src\data.py`.**
 
-Source: `D:\UCL\term 3\tencent TAAC\dafault file\dataset.py` (763 lines).
-Destination: `D:\UCL\term 3\tencent TAAC\pcvr\src\data.py`.
+Source: `./dafault file\dataset.py` (763 lines).
+Destination: `./pcvr\src\data.py`.
 
 Verbatim copy. Do not modify the body. Validators (Tasks 6-9) will be appended.
 
@@ -824,7 +826,7 @@ def test_dataset_inference_zeros_labels(synth_data_root):
 - [ ] **Step 3: Run — expect PASS if torch is available, SKIP otherwise.**
 
 ```powershell
-& 'C:\Users\84447\anaconda3\python.exe' -m pytest pcvr/tests/test_data_validators.py -v
+python -m pytest pcvr/tests/test_data_validators.py -v
 ```
 
 - [ ] **Step 4: Commit.**
@@ -1200,7 +1202,7 @@ git commit -m "feat(data): sequence_history_leak_probe"
 **Files:**
 - Create: `pcvr\src\model.py`
 
-- [ ] **Step 1: Copy `D:\UCL\term 3\tencent TAAC\dafault file\model.py` → `pcvr\src\model.py`.**
+- [ ] **Step 1: Copy `./dafault file\model.py` → `pcvr\src\model.py`.**
 
 Verbatim copy. No edits.
 
@@ -1217,7 +1219,7 @@ def test_model_imports():
 - [ ] **Step 3: Run.**
 
 ```powershell
-& 'C:\Users\84447\anaconda3\python.exe' -m pytest pcvr/tests/ -v -k "model_imports or test_data" --no-header
+python -m pytest pcvr/tests/ -v -k "model_imports or test_data" --no-header
 ```
 
 - [ ] **Step 4: Commit.**
@@ -2053,7 +2055,7 @@ class Trainer:
 - [ ] **Step 2: Lint-check by importing.**
 
 ```powershell
-& 'C:\Users\84447\anaconda3\python.exe' -c "import ast; ast.parse(open(r'D:\UCL\term 3\tencent TAAC\pcvr\src\trainer.py', encoding='utf-8').read()); print('ok')"
+python -c "import ast; ast.parse(open(r'./pcvr\src\trainer.py', encoding='utf-8').read()); print('ok')"
 ```
 Expected: ok.
 
@@ -2235,7 +2237,7 @@ if __name__ == "__main__":
 - [ ] **Step 2: Smoke-import.**
 
 ```powershell
-& 'C:\Users\84447\anaconda3\python.exe' -c "import ast; ast.parse(open(r'D:\UCL\term 3\tencent TAAC\pcvr\train.py', encoding='utf-8').read()); print('ok')"
+python -c "import ast; ast.parse(open(r'./pcvr\train.py', encoding='utf-8').read()); print('ok')"
 ```
 
 - [ ] **Step 3: Commit.**
@@ -2452,7 +2454,7 @@ if __name__ == "__main__":
 - [ ] **Step 2: Lint check.**
 
 ```powershell
-& 'C:\Users\84447\anaconda3\python.exe' -c "import ast; ast.parse(open(r'D:\UCL\term 3\tencent TAAC\pcvr\infer.py', encoding='utf-8').read()); print('ok')"
+python -c "import ast; ast.parse(open(r'./pcvr\infer.py', encoding='utf-8').read()); print('ok')"
 ```
 
 - [ ] **Step 3: Commit.**
@@ -2656,7 +2658,7 @@ def test_train_and_infer_smoke(synth_data_root, tmp_path, monkeypatch):
 - [ ] **Step 2: Run (skipped without torch locally).**
 
 ```powershell
-& 'C:\Users\84447\anaconda3\python.exe' -m pytest pcvr/tests/test_smoke.py -v
+python -m pytest pcvr/tests/test_smoke.py -v
 ```
 
 - [ ] **Step 3: Commit.**
@@ -2774,7 +2776,7 @@ git commit -m "docs: ARCHITECTURE.md decisions doc"
 After Tasks 0–19 complete, run from `pcvr/`:
 
 ```powershell
-& 'C:\Users\84447\anaconda3\python.exe' -m pytest pcvr/tests/ -v
+python -m pytest pcvr/tests/ -v
 ```
 
 Expected (without torch installed): `test_config.py` passes; torch-using tests SKIP. With torch installed: smoke test trains a tiny model, infers, validates audit.
@@ -2797,7 +2799,7 @@ Type consistency check: `Config` field names match between `configs/baseline.py`
 
 ## Execution Handoff
 
-Plan saved to `D:\UCL\term 3\tencent TAAC\docs\superpowers\plans\2026-05-08-pcvr-architecture-v0.md`. Two execution options:
+Plan saved to `./docs\superpowers\plans\2026-05-08-pcvr-architecture-v0.md`. Two execution options:
 
 **1. Subagent-Driven (recommended)** — dispatch a fresh subagent per task, two-stage review between tasks. Best for catching cross-task drift and keeping main context clean.
 
