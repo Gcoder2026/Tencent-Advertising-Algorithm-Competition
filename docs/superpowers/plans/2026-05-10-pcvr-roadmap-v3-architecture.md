@@ -40,7 +40,7 @@ For every upgrade you pick up:
 - [ ] I read all 12 fields of the card, not just the "Direction" and "Why".
 - [ ] I am changing exactly ONE lever (not bundling B1+B2, not bundling encoder + loss, not bundling data + model).
 - [ ] I wrote the card's **Test contract** as a real pytest test in `pcvr/tests/` (or extended an existing test file).
-- [ ] The test passes locally — `& 'C:/Users/84447/anaconda3/envs/taac/python.exe' -m pytest pcvr/tests/ -v` shows my new test name as PASSED.
+- [ ] The test passes locally — with the project's conda env activated, `python -m pytest pcvr/tests/ -v` shows my new test name as PASSED.
 - [ ] I diffed the **Integration** field's listed files against my working branch and confirmed I did NOT touch them.
 - [ ] I have a clear **Rollback** — flipping the new config flag back returns me to the prior anchor with no other side effects.
 

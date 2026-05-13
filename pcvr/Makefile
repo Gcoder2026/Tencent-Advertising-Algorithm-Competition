@@ -1,7 +1,11 @@
 # pcvr/Makefile — local development entry points.
 # Use POSIX make (works under git-bash/WSL). Windows users: invoke via bash.
+#
+# Assumes the project's conda env (e.g., `taac`) is activated so that `python`
+# resolves to the env's interpreter with torch + pyarrow installed.
+# Override with `make PYTHON=/path/to/your/python <target>` if needed.
 
-PYTHON ?= /c/Users/84447/anaconda3/envs/taac/python.exe
+PYTHON ?= python
 
 .PHONY: help test smoke build-step1 build-step3 prepare-sample repro clean
 

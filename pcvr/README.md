@@ -10,11 +10,12 @@ Solution scaffold for the Tencent KDD Cup 2026 PCVR (post-click conversion-rate)
 - `tests/` — pytest unit + smoke tests.
 
 ## Local dev
-Anaconda Python at `C:\Users\84447\anaconda3\python.exe`. Most tests skip without torch installed; for full end-to-end create a torch-enabled env:
+Most tests skip without torch installed. For full end-to-end, create a torch-enabled conda env (Python 3.10 to match the platform):
 ```
 conda create -n taac python=3.10
 conda activate taac
 pip install -r requirements.txt
+python -m pytest tests/    # 37/37 should pass once torch is in
 ```
 
 ## Platform submission

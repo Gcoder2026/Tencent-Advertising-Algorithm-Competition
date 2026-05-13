@@ -34,9 +34,11 @@ If any box above is unchecked, do NOT merge this PR yet. The most common skipped
 Paste the pytest invocation and the PASSED line for your new test:
 
 ```
-$ /c/Users/84447/anaconda3/envs/taac/python.exe -m pytest pcvr/tests/test_<your_test_file>.py::test_<your_test_name> -v
+$ python -m pytest pcvr/tests/test_<your_test_file>.py::test_<your_test_name> -v
 ... PASSED ...
 ```
+
+(Assumes the project's conda env is activated. If your local Python is elsewhere, substitute your `python` invocation.)
 
 If the test couldn't be made local (e.g., it depends on the platform's full data), say so here and link to the platform log line that exercised it.
 
