@@ -23,6 +23,41 @@
 
 ---
 
+## Picking up a card — discipline (read this first)
+
+**Pick ONE card. Read all 12 fields. Implement. Run the test contract. Only then submit. Never bundle.**
+
+This is the discipline that the v3/v4/v5 regressions came from skipping. Single-lever isolation is the structural fix: each card has a test contract designed to FAIL if you bundle two changes together. If the test passes, the change is well-scoped; if it doesn't, you're touching more than one lever.
+
+### Working tree convention
+
+All upgrades land in the **`pcvr/` codebase** (the layered architecture you're currently looking at). **Do NOT create new `vN/` snapshot directories** for upgrades — that was the pattern before the merge. Now the discipline is: one git branch per upgrade off `main`, implemented inside `pcvr/`. The existing `v1/`, `v2/`, `v3/`, `v4/`, `v5/` directories remain as historical record only; do not edit or extend them.
+
+### Before submitting any card — run this checklist
+
+For every upgrade you pick up:
+
+- [ ] I read all 12 fields of the card, not just the "Direction" and "Why".
+- [ ] I am changing exactly ONE lever (not bundling B1+B2, not bundling encoder + loss, not bundling data + model).
+- [ ] I wrote the card's **Test contract** as a real pytest test in `pcvr/tests/` (or extended an existing test file).
+- [ ] The test passes locally — `& 'C:/Users/84447/anaconda3/envs/taac/python.exe' -m pytest pcvr/tests/ -v` shows my new test name as PASSED.
+- [ ] I diffed the **Integration** field's listed files against my working branch and confirmed I did NOT touch them.
+- [ ] I have a clear **Rollback** — flipping the new config flag back returns me to the prior anchor with no other side effects.
+
+If any box is unchecked, do not build the submission zip. The single most common failure pattern in this project is implementing without writing the test contract — that's what produced the v4 regression. Don't skip step 3 and 4.
+
+### Submission discipline
+
+For each Step-1 submission, write a `NOTES.md` in the corresponding `submissions/<date>_<tag>/` folder explaining:
+- which card(s) you picked,
+- which lever changed,
+- what the test contract assertion was and that it passed,
+- which config file you used.
+
+Without `NOTES.md`, the leaderboard score is unattributable; the next person can't tell what was different.
+
+---
+
 ## How to read an upgrade card
 
 Every item below uses the same 12-field structure:
