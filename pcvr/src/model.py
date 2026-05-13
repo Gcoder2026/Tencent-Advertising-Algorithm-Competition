@@ -15,7 +15,45 @@ class ModelInput(NamedTuple):
     item_dense_feats: torch.Tensor
     seq_data: dict        # {domain: tensor [B, S, L]}
     seq_lens: dict        # {domain: tensor [B]}
-    seq_time_buckets: dict  # {domain: tensor [B, L]}
+    # Mutually exclusive at consumption time. The model picks one based
+    # on cfg.use_continuous_time:
+    #   use_continuous_time=False → seq_time_buckets is consumed (v0 path)
+    #   use_continuous_time=True  → seq_log_time_delta is consumed (C3 path)
+    seq_time_buckets: dict  # {domain: tensor [B, L]} int64 bucket ids
+    seq_log_time_delta: Optional[dict] = None  # {domain: tensor [B, L]} float32
+
+
+class ContinuousTimeEncoder(nn.Module):
+    """C3 replacement for the bucket time embedding.
+
+    Encodes per-event log(1 + Δt) into a d_model vector via a single
+    bias-free linear projection. Two padding invariants enforced by
+    construction:
+
+      1. bias=False  → Linear(0) = 0 exactly. So with the data pipeline
+         emitting log_time_delta=0 at padding positions, the encoder
+         output at padding is the exact zero vector (no LayerNorm bias
+         leak as in v4).
+      2. An explicit multiplicative mask (log_time_delta != 0) on the
+         output as a second line of defence and documentation of the
+         invariant the C3 roadmap test contract asserts on.
+
+    Small init std=0.01 keeps the contribution's magnitude low at the
+    start of training so the rest of the model (sideinfo embeddings)
+    isn't perturbed before this projection has learned anything useful.
+    """
+
+    def __init__(self, d_model: int) -> None:
+        super().__init__()
+        self.proj = nn.Linear(1, d_model, bias=False)
+        nn.init.normal_(self.proj.weight, std=0.01)
+
+    def forward(self, log_time_delta: torch.Tensor) -> torch.Tensor:
+        # log_time_delta: (B, L) float32
+        x = log_time_delta.unsqueeze(-1)  # (B, L, 1)
+        out = self.proj(x)  # (B, L, d_model)
+        mask = (log_time_delta != 0).to(out.dtype).unsqueeze(-1)
+        return out * mask
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
@@ -1229,6 +1267,10 @@ class PCVRHyFormer(nn.Module):
         ns_tokenizer_type: str = 'rankmixer',
         user_ns_tokens: int = 0,
         item_ns_tokens: int = 0,
+        # C3: when True, REPLACES the discrete bucket time embedding
+        # with a ContinuousTimeEncoder. Mutually exclusive with the
+        # bucket path; the bucket embedding is not constructed.
+        use_continuous_time: bool = False,
     ) -> None:
         super().__init__()
 
@@ -1244,6 +1286,7 @@ class PCVRHyFormer(nn.Module):
         self.emb_skip_threshold = emb_skip_threshold
         self.seq_id_threshold = seq_id_threshold
         self.ns_tokenizer_type = ns_tokenizer_type
+        self.use_continuous_time = use_continuous_time
 
         # ================== NS Tokens Construction ==================
 
@@ -1373,8 +1416,14 @@ class PCVRHyFormer(nn.Module):
                 nn.LayerNorm(d_model),
             )
 
-        # ================== Time Interval Bucket Embedding (optional) ==================
-        if num_time_buckets > 0:
+        # ================== Time Encoding (bucket OR continuous, mutually exclusive) ==================
+        # C3: use_continuous_time REPLACES the bucket embedding with a
+        # ContinuousTimeEncoder. Only one of these modules exists on a
+        # given model instance — checkpoints from one path cannot be
+        # loaded into the other (state_dict keys differ).
+        if use_continuous_time:
+            self.time_encoder = ContinuousTimeEncoder(d_model)
+        elif num_time_buckets > 0:
             self.time_embedding = nn.Embedding(num_time_buckets, d_model, padding_idx=0)
 
         # ================== HyFormer Components ==================
@@ -1463,9 +1512,11 @@ class PCVRHyFormer(nn.Module):
                 nn.init.xavier_normal_(emb.weight.data)
                 emb.weight.data[0, :] = 0
 
-        if self.num_time_buckets > 0:
+        if self.num_time_buckets > 0 and not self.use_continuous_time:
             nn.init.xavier_normal_(self.time_embedding.weight.data)
             self.time_embedding.weight.data[0, :] = 0
+        # ContinuousTimeEncoder weights are initialized in its own __init__
+        # (std=0.01); no second-pass init needed here.
 
     def reinit_high_cardinality_params(
         self, cardinality_threshold: int = 10000
@@ -1549,6 +1600,7 @@ class PCVRHyFormer(nn.Module):
         is_id: List[bool],
         emb_index: List[int],
         time_bucket_ids: torch.Tensor,
+        log_time_delta: Optional[torch.Tensor] = None,
     ) -> torch.Tensor:
         """Embeds a sequence domain by concatenating sideinfo embeddings and projecting to d_model."""
         B, S, L = seq.shape
@@ -1567,8 +1619,20 @@ class PCVRHyFormer(nn.Module):
         cat_emb = torch.cat(emb_list, dim=-1)  # (B, L, S*emb_dim)
         token_emb = F.gelu(proj(cat_emb))  # (B, L, D)
 
-        # Add time bucket embedding (all-zero ids produce zero vectors via padding_idx=0)
-        if self.num_time_buckets > 0:
+        # C3: branch on use_continuous_time. Mutually exclusive with the
+        # bucket path. Bucket path: padding_idx=0 zeros out padding rows.
+        # Continuous path: ContinuousTimeEncoder has bias=False + explicit
+        # zero-mask at padding, satisfying C3 test contract assertion #3.
+        if self.use_continuous_time:
+            if log_time_delta is None:
+                raise RuntimeError(
+                    "use_continuous_time=True requires log_time_delta to be "
+                    "provided in ModelInput.seq_log_time_delta. The infer/"
+                    "trainer wiring must branch on cfg.use_continuous_time "
+                    "and populate this field — silent fallback to zeros would "
+                    "reintroduce the v4 regression mode.")
+            token_emb = token_emb + self.time_encoder(log_time_delta.to(token_emb.dtype))
+        elif self.num_time_buckets > 0:
             token_emb = token_emb + self.time_embedding(time_bucket_ids)
 
         return token_emb
@@ -1652,11 +1716,18 @@ class PCVRHyFormer(nn.Module):
         seq_tokens_list = []
         seq_masks_list = []
         for domain in self.seq_domains:
+            log_dt = (
+                inputs.seq_log_time_delta[domain]
+                if inputs.seq_log_time_delta is not None
+                   and domain in inputs.seq_log_time_delta
+                else None
+            )
             tokens = self._embed_seq_domain(
                 inputs.seq_data[domain],
                 self._seq_embs[domain], self._seq_proj[domain],
                 self._seq_is_id[domain], self._seq_emb_index[domain],
-                inputs.seq_time_buckets[domain])
+                inputs.seq_time_buckets[domain],
+                log_time_delta=log_dt)
             seq_tokens_list.append(tokens)
             mask = self._make_padding_mask(inputs.seq_lens[domain], inputs.seq_data[domain].shape[2])
             seq_masks_list.append(mask)
@@ -1694,11 +1765,18 @@ class PCVRHyFormer(nn.Module):
         seq_tokens_list = []
         seq_masks_list = []
         for domain in self.seq_domains:
+            log_dt = (
+                inputs.seq_log_time_delta[domain]
+                if inputs.seq_log_time_delta is not None
+                   and domain in inputs.seq_log_time_delta
+                else None
+            )
             tokens = self._embed_seq_domain(
                 inputs.seq_data[domain],
                 self._seq_embs[domain], self._seq_proj[domain],
                 self._seq_is_id[domain], self._seq_emb_index[domain],
-                inputs.seq_time_buckets[domain])
+                inputs.seq_time_buckets[domain],
+                log_time_delta=log_dt)
             seq_tokens_list.append(tokens)
             mask = self._make_padding_mask(inputs.seq_lens[domain], inputs.seq_data[domain].shape[2])
             seq_masks_list.append(mask)

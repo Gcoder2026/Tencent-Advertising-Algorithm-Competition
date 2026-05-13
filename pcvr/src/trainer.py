@@ -44,6 +44,7 @@ def _make_model_input(device_batch: Dict[str, Any], device) -> ModelInput:
     seq_data = {d: device_batch[d] for d in seq_domains}
     seq_lens = {d: device_batch[f"{d}_len"] for d in seq_domains}
     seq_tb: Dict[str, torch.Tensor] = {}
+    seq_ltd: Dict[str, torch.Tensor] = {}
     for d in seq_domains:
         key = f"{d}_time_bucket"
         if key in device_batch:
@@ -51,6 +52,13 @@ def _make_model_input(device_batch: Dict[str, Any], device) -> ModelInput:
         else:
             B, _, L = device_batch[d].shape
             seq_tb[d] = torch.zeros(B, L, dtype=torch.long, device=device)
+        # C3: always populate log_time_delta when the dataset emits it.
+        # The model raises a RuntimeError if use_continuous_time=True and
+        # this key is absent — no silent fallback to zeros (which was the
+        # v4 regression surface called out by the roadmap test contract).
+        key_ltd = f"{d}_log_time_delta"
+        if key_ltd in device_batch:
+            seq_ltd[d] = device_batch[key_ltd]
     return ModelInput(
         user_int_feats=device_batch["user_int_feats"],
         item_int_feats=device_batch["item_int_feats"],
@@ -59,6 +67,7 @@ def _make_model_input(device_batch: Dict[str, Any], device) -> ModelInput:
         seq_data=seq_data,
         seq_lens=seq_lens,
         seq_time_buckets=seq_tb,
+        seq_log_time_delta=seq_ltd if seq_ltd else None,
     )
 
 

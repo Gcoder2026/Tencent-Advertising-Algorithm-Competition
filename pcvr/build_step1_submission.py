@@ -31,6 +31,7 @@ CONFIGS_FILES = [
     "__init__.py",
     "baseline.py",
     "first_submission.py",
+    "c3_continuous_time.py",
 ]
 SRC_FILES = [
     "__init__.py",

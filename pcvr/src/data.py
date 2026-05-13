@@ -228,12 +228,14 @@ class PCVRParquetDataset(IterableDataset):
         self._buf_user_dense = np.zeros((B, self.user_dense_schema.total_dim), dtype=np.float32)
         self._buf_seq = {}
         self._buf_seq_tb = {}
+        self._buf_seq_ltd = {}  # C3: continuous log(1 + time_delta) per event
         self._buf_seq_lens = {}
         for domain in self.seq_domains:
             max_len = self._seq_maxlen[domain]
             n_feats = len(self.sideinfo_fids[domain])
             self._buf_seq[domain] = np.zeros((B, n_feats, max_len), dtype=np.int64)
             self._buf_seq_tb[domain] = np.zeros((B, max_len), dtype=np.int64)
+            self._buf_seq_ltd[domain] = np.zeros((B, max_len), dtype=np.float32)
             self._buf_seq_lens[domain] = np.zeros(B, dtype=np.int64)
 
         # ---- Pre-compute (col_idx, offset, vocab_size) plans for int columns ----
@@ -635,9 +637,15 @@ class PCVRParquetDataset(IterableDataset):
             result[domain] = torch.from_numpy(out.copy())
             result[f'{domain}_len'] = torch.from_numpy(lengths.copy())
 
-            # Time bucketing.
+            # Time bucketing (v0 path) + continuous log-Δt (C3 path).
+            # Both are emitted unconditionally; the model picks which to
+            # consume based on cfg.use_continuous_time. Cost of emitting
+            # the unused one is one float32 buffer (~max_len*B*4 bytes/batch),
+            # negligible vs the int64 sideinfo tensors.
             time_bucket = self._buf_seq_tb[domain][:B]
             time_bucket[:] = 0
+            log_time_delta = self._buf_seq_ltd[domain][:B]
+            log_time_delta[:] = 0.0
             if ts_ci is not None:
                 ts_col = batch.column(ts_ci)
                 ts_offs = ts_col.offsets.to_numpy()
@@ -672,7 +680,17 @@ class PCVRParquetDataset(IterableDataset):
                 buckets[ts_padded == 0] = 0
                 time_bucket[:] = buckets
 
+                # C3: continuous log(1 + Δt). At padding positions
+                # ts_padded==0 so time_diff==timestamps[i] (a large
+                # positive number), but we must emit 0 there so the
+                # bias-free ContinuousTimeEncoder produces an exact-zero
+                # output vector at padding (roadmap test contract #3).
+                ltd = np.log1p(time_diff.astype(np.float32))
+                ltd[ts_padded == 0] = 0.0
+                log_time_delta[:] = ltd
+
             result[f'{domain}_time_bucket'] = torch.from_numpy(time_bucket.copy())
+            result[f'{domain}_log_time_delta'] = torch.from_numpy(log_time_delta.copy())
 
         return result
 

@@ -151,6 +151,7 @@ def main() -> None:
         ns_tokenizer_type=cfg.ns_tokenizer_type,
         user_ns_tokens=cfg.user_ns_tokens,
         item_ns_tokens=cfg.item_ns_tokens,
+        use_continuous_time=cfg.use_continuous_time,
     )
 
     writer = None

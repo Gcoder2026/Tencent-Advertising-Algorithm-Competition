@@ -52,6 +52,10 @@ class Config:
     seq_causal: bool = False
     action_num: int = 1
     use_time_buckets: bool = True
+    # C3 lever: replace the bucket embedding with a continuous log(1+dt)
+    # linear projection. Mutually exclusive with the bucket path. Default
+    # False to preserve the v0 0.81144 anchor exactly.
+    use_continuous_time: bool = False
     rank_mixer_mode: str = "full"
     use_rope: bool = False
     rope_base: float = 10000.0

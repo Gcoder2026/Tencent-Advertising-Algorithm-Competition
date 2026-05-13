@@ -121,6 +121,7 @@ def main() -> None:
         emb_skip_threshold=cfg.emb_skip_threshold, seq_id_threshold=cfg.seq_id_threshold,
         ns_tokenizer_type=cfg.ns_tokenizer_type,
         user_ns_tokens=cfg.user_ns_tokens, item_ns_tokens=cfg.item_ns_tokens,
+        use_continuous_time=cfg.use_continuous_time,
     ).to(device)
     model.load_state_dict(load_state_dict(ckpt_dir), strict=True)
     model.eval()
@@ -142,6 +143,7 @@ def main() -> None:
             seq_data = {d: batch[d].to(device, non_blocking=True) for d in seq_domains}
             seq_lens = {d: batch[f"{d}_len"].to(device, non_blocking=True) for d in seq_domains}
             seq_tb = {}
+            seq_ltd = {}
             for d in seq_domains:
                 key = f"{d}_time_bucket"
                 if key in batch:
@@ -149,12 +151,20 @@ def main() -> None:
                 else:
                     B, _, L = batch[d].shape
                     seq_tb[d] = torch.zeros(B, L, dtype=torch.long, device=device)
+                # C3 test contract assertion #5: _run() must route the float
+                # log_time_delta key to the model. If use_continuous_time=True
+                # and this key is missing, the model raises RuntimeError —
+                # no silent fallback to zeros (the v4 regression surface).
+                key_ltd = f"{d}_log_time_delta"
+                if key_ltd in batch:
+                    seq_ltd[d] = batch[key_ltd].to(device, non_blocking=True)
             inp = ModelInput(
                 user_int_feats=batch["user_int_feats"].to(device, non_blocking=True),
                 item_int_feats=batch["item_int_feats"].to(device, non_blocking=True),
                 user_dense_feats=batch["user_dense_feats"].to(device, non_blocking=True),
                 item_dense_feats=batch["item_dense_feats"].to(device, non_blocking=True),
                 seq_data=seq_data, seq_lens=seq_lens, seq_time_buckets=seq_tb,
+                seq_log_time_delta=seq_ltd if seq_ltd else None,
             )
             logits, _ = model.predict(inp)
             probs = torch.sigmoid(logits.float().squeeze(-1)).cpu().numpy()
