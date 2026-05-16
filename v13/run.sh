@@ -2,6 +2,26 @@
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 export PYTHONPATH="${SCRIPT_DIR}:${PYTHONPATH}"
 
+# v13.1 GPU-contention mitigations (added after two OOM failures on the
+# shared Angel pool):
+#
+#   - PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True
+#       Reduces fragmentation when the resident-set ramps. The PyTorch
+#       OOM error message explicitly recommends this for our exact case.
+#   - --num_workers 4 (was 8)
+#       Each DataLoader worker carries its own buffer + pinned host RAM.
+#       On a shared node where neighbors are pressuring host memory,
+#       4 workers leaves more headroom for the model itself. Throughput
+#       impact is small on this size of training set; we are
+#       GPU-compute bound not data-loader bound.
+#   - --buffer_batches 10 (was default 20)
+#       Halves the shuffle buffer's pinned-memory footprint.
+#
+# Neither change touches the model architecture, so v13.1 results are
+# directly comparable to a hypothetical successful v13 run.
+
+export PYTORCH_CUDA_ALLOC_CONF="expandable_segments:True"
+
 # ---- v13 config: v6 recipe + ROBUST cyclical time features ----
 #
 # Lever: row-level cyclical time embeddings (hour-of-day + day-of-week +
@@ -50,5 +70,6 @@ python3 -u "${SCRIPT_DIR}/train.py" \
     --reinit_cardinality_threshold 0 \
     --reinit_sparse_after_epoch 1 \
     --use_cyclical_time \
-    --num_workers 8 \
+    --num_workers 4 \
+    --buffer_batches 10 \
     "$@"
