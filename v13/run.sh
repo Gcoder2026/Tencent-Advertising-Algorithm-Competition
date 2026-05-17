@@ -2,39 +2,40 @@
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 export PYTHONPATH="${SCRIPT_DIR}:${PYTHONPATH}"
 
-# v13.2 GPU-contention mitigations (escalated after three OOM failures
-# on the shared Angel pool):
+# v13.3 GPU-contention mitigations (escalated after four failures on
+# the shared Angel pool):
 #
 # Failure progression:
 #   v13:    OOM at model-load (.to(device)) — only 326 MiB allocated
 #   v13.1:  OOM during forward (F.scaled_dot_product_attention) —
-#           PyTorch had 10.9 GiB allocated, then tried for another
-#           1024 MiB for the seq_c/seq_d (length 512) attention score
-#           matrix and failed. v13.1's host-side mitigations DID work
-#           (model loaded), but attention activation memory is the new
-#           wall.
+#           PyTorch had 10.9 GiB allocated, then needed another 1024 MiB
+#           for the seq_c/seq_d attention score matrix.
+#   v13.2:  Silent kill ~57s into training (no Python traceback —
+#           kernel-level OOM kill bypassing PyTorch). Likely host RAM
+#           or cgroup memory limit, since v13.1's GPU mitigations
+#           reduced GPU pressure but host pressure is independent.
 #
-# v13.2 mitigations (in order of impact):
+# v13.3 final mitigation: drop batch_size 256 -> 128. This halves
+# every per-batch activation tensor (attention scores, embedding
+# lookup outputs, transformer hidden states, gradients) AND halves
+# DataLoader pinned-memory traffic. It is the single most impactful
+# memory reduction available without changing model architecture.
 #
-#   - seq_max_lens 256/256/512/512 -> 128/128/256/256 (v1's recipe)
-#       Attention memory = O(batch * heads * seq_len^2). Halving the
-#       long sequences (512 -> 256) cuts seq_c/seq_d attention memory
-#       4x. v1 used these exact lengths and fit comfortably. Cost in
-#       AUC: estimated -0.005 (v6 vs v1 delta from this lever alone).
+# Active mitigations (carried over from v13.1/v13.2):
 #   - PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True
-#       Carried over from v13.1. Reduces fragmentation. Confirmed
-#       useful from v13.1's progress past the model-load OOM.
-#   - --num_workers 4 (was 8)
-#       Carried over from v13.1. Host-RAM headroom.
-#   - --buffer_batches 10 (was default 20)
-#       Carried over from v13.1. Smaller shuffle buffer.
+#   - --num_workers 4 (was 8) — host-RAM headroom
+#   - --buffer_batches 10 (was default 20) — smaller shuffle buffer
+#   - --seq_max_lens 128/128/256/256 (was 256/256/512/512) — cuts
+#     attention activation memory 4x on long sequences
+#   - --batch_size 128 (was 256) — halves all activation memory
 #
 # Net AUC expectation vs v6 (0.81287):
-#   Cyclical time lever:   +0.005 to +0.011
-#   Shorter seq lens:      -0.005 to -0.007
-#   Net:                   ~0 to +0.006 -> 0.813 to 0.819
-# Optimistic ceiling now lower than original v13, but training will
-# actually complete on this contended pool.
+#   Cyclical time lever:    +0.005 to +0.011
+#   Shorter seq lens:       -0.005 to -0.007
+#   Smaller batch (256->128): ~neutral (-0.001 to +0.002)
+#   Net:                    ~0 to +0.006 -> 0.813 to 0.819
+# Lower optimistic ceiling than original v13 but should actually
+# complete on this contended pool.
 
 export PYTORCH_CUDA_ALLOC_CONF="expandable_segments:True"
 
@@ -81,7 +82,7 @@ python3 -u "${SCRIPT_DIR}/train.py" \
     --seq_encoder_type transformer \
     --seq_truncate auto \
     --seq_max_lens seq_a:128,seq_b:128,seq_c:256,seq_d:256 \
-    --batch_size 256 \
+    --batch_size 128 \
     --emb_skip_threshold 1000000 \
     --reinit_cardinality_threshold 0 \
     --reinit_sparse_after_epoch 1 \
