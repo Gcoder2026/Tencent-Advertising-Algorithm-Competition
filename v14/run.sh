@@ -2,18 +2,32 @@
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 export PYTHONPATH="${SCRIPT_DIR}:${PYTHONPATH}"
 
-# v14: v6's EXACT winning recipe + focal loss (single-variable test)
+# v14.1: focal loss + v13.4's PROVEN-FIT memory recipe
 #
-# What we learned from v13.4 (0.797712) vs v6 (0.81287):
-#   - The cyclical-time community claim ("+0.011") did NOT materialize.
-#     hour+day cyclical was at best neutral, possibly slightly negative.
-#   - The seq_max_lens cut (256/512 -> 128/256) cost real AUC (~ -0.01).
-#   - 13 submissions in, v6's recipe is still our ceiling.
+# v14 attempted v6's recipe + focal but OOM'd at 12.37 GiB allocated.
+# Platform GPU pool is currently heavily contended (5 neighbor
+# processes using 95+ GiB), our budget capped at ~12 GiB. v6's
+# recipe peak is ~15 GiB — won't fit tonight.
 #
-# v14 strategy: restore v6's recipe exactly, then add ONE new lever
-# that no prior submission tried — focal loss for the class-imbalance
-# problem. Single-variable test: if v14 beats v6, the gain is purely
-# from focal. If not, focal is not the answer and we move on.
+# v13.4 trained successfully a few hours ago with the smaller recipe
+# (batch 128, seq 128/256). We accept that recipe as our floor and
+# test focal loss on top.
+#
+# Trade-off:
+#   - v13.4 baseline: 0.797712 (significantly below v6's 0.81287)
+#   - + focal: +0.005 to +0.008
+#   - Expected v14.1: 0.803 to 0.806
+#   - Still below v6 ceiling, but tests if focal is a real lever.
+#     If yes, we re-test v6 recipe + focal another day when platform
+#     is less contended (likely better numbers then).
+#
+# Why focal loss specifically:
+#   - Positive rate is 12.4%. Mild but real class imbalance.
+#   - All 13 prior submissions used vanilla BCE.
+#   - gamma=2 focuses gradient on hard examples (confident-but-wrong).
+#   - alpha=0.75 upweights positives (reading utils.py: alpha_t =
+#     alpha*targets + (1-alpha)*(1-targets), so alpha=0.75 means
+#     positives get weight 0.75, negatives 0.25).
 #
 # Why focal loss specifically:
 #   - Positive rate is 12.4%. Mild but real class imbalance.
@@ -53,8 +67,8 @@ python3 -u "${SCRIPT_DIR}/train.py" \
     --ns_groups_json "" \
     --seq_encoder_type transformer \
     --seq_truncate auto \
-    --seq_max_lens seq_a:256,seq_b:256,seq_c:512,seq_d:512 \
-    --batch_size 256 \
+    --seq_max_lens seq_a:128,seq_b:128,seq_c:256,seq_d:256 \
+    --batch_size 128 \
     --emb_skip_threshold 1000000 \
     --reinit_cardinality_threshold 0 \
     --reinit_sparse_after_epoch 1 \
