@@ -1661,16 +1661,16 @@ class PCVRHyFormer(nn.Module):
         ns_parts = [user_ns]
         if self.has_user_dense:
             user_dense_tok = F.silu(self.user_dense_proj(inputs.user_dense_feats)).unsqueeze(1)  # (B, 1, D)
-            # v13: cyclical time injection. Compute the cyclical sum from
-            # hour/day/month if they were provided; add to user_dense_tok
-            # (broadcast to its (B, 1, D) shape).
+            # v13.4: cyclical time injection — hour + day-of-week only.
+            # Month-of-year embedding module is still constructed (to
+            # keep the state-dict shape stable across train/eval) but
+            # not applied. See the dataset.py comment for why month
+            # was dropped.
             if (self.use_cyclical_time
                 and inputs.hour_of_day is not None
-                and inputs.day_of_week is not None
-                and inputs.month_of_year is not None):
+                and inputs.day_of_week is not None):
                 cyc = (self.hour_embedding(inputs.hour_of_day)
-                       + self.day_embedding(inputs.day_of_week)
-                       + self.month_embedding(inputs.month_of_year))
+                       + self.day_embedding(inputs.day_of_week))
                 user_dense_tok = user_dense_tok + cyc.unsqueeze(1)
             ns_parts.append(user_dense_tok)
         ns_parts.append(item_ns)

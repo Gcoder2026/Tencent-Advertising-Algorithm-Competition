@@ -213,28 +213,24 @@ def _make_model_input(batch: Dict[str, Any], device: torch.device) -> ModelInput
         seq_time_buckets[domain] = batch[f"{domain}_time_bucket"].to(
             device, non_blocking=True)
 
-    # v13: defensive cyclical-time field derivation. If the dataset emitted
-    # them (preferred path), use directly. Otherwise derive from the
-    # timestamp field — guarantees the cyclical features ALWAYS reach the
-    # model, even if the eval-side dataset version differs from training.
-    # This is the structural fix for v10's evaluation-step failure mode.
+    # v13.4: defensive cyclical-time field derivation, pure integer
+    # arithmetic only (no datetime64). If the dataset emitted them
+    # (preferred path), use directly. Otherwise derive from the
+    # timestamp field — guarantees the cyclical features ALWAYS reach
+    # the model even if the eval-side dataset version differs from
+    # training. month_of_year is intentionally left None: the model's
+    # forward path skips the application when month is missing, while
+    # the embedding module is still constructed (state-dict stable).
     if "hour_of_day" in batch:
         hour_of_day = batch["hour_of_day"].to(device, non_blocking=True)
         day_of_week = batch["day_of_week"].to(device, non_blocking=True)
-        month_of_year = batch["month_of_year"].to(device, non_blocking=True)
     elif "timestamp" in batch:
         ts = batch["timestamp"].to(device, non_blocking=True)
         hour_of_day = ((ts % 86400) // 3600).long()
         day_of_week = ((ts // 86400) % 7).long()
-        # Month: convert timestamp to numpy datetime64 for division-free path.
-        # Move to CPU briefly because numpy datetime64 doesn't run on GPU.
-        ts_np = ts.cpu().numpy().astype('datetime64[s]')
-        month_np = (ts_np.astype('datetime64[M]').astype(np.int64) % 12)
-        month_of_year = torch.from_numpy(month_np).to(device, non_blocking=True)
     else:
         hour_of_day = None
         day_of_week = None
-        month_of_year = None
 
     return ModelInput(
         user_int_feats=batch["user_int_feats"].to(device, non_blocking=True),
@@ -246,7 +242,7 @@ def _make_model_input(batch: Dict[str, Any], device: torch.device) -> ModelInput
         seq_time_buckets=seq_time_buckets,
         hour_of_day=hour_of_day,
         day_of_week=day_of_week,
-        month_of_year=month_of_year,
+        month_of_year=None,
     )
 
 

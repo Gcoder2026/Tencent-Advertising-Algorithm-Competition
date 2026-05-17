@@ -656,16 +656,14 @@ class PCVRParquetDataset(IterableDataset):
             padded = self._pad_varlen_float_column(col, dim, B)
             user_dense[:, offset:offset + dim] = padded
 
-        # v13: cyclical row-level time features derived from the row's
-        # UNIX timestamp (UTC seconds). Per 小红书 community consensus,
-        # hour + day-of-week + month consistently gives ~+0.01 AUC.
-        # All three emitted unconditionally so infer.py's path can't
-        # silently miss them (suspected v10 failure mode).
+        # v13.4: cyclical row-level time features derived from the row's
+        # UNIX timestamp (UTC seconds). Pure integer arithmetic only —
+        # no numpy datetime64 conversion (suspected silent-worker-kill
+        # cause in v13/v13.1/v13.2/v13.3). Month-of-year dropped because
+        # (a) it required datetime64 and (b) Tencent's ad training set
+        # spans only weeks-not-years, so month is near-constant anyway.
         hour_of_day = ((timestamps % 86400) // 3600).astype(np.int64)  # 0-23
         day_of_week = ((timestamps // 86400) % 7).astype(np.int64)      # 0-6
-        # Month via numpy datetime64 arithmetic: months-since-epoch %% 12.
-        ts64 = timestamps.astype('datetime64[s]')
-        month_of_year = (ts64.astype('datetime64[M]').astype(np.int64) % 12).astype(np.int64)  # 0-11
 
         result = {
             'user_int_feats': torch.from_numpy(user_int.copy()),
@@ -676,7 +674,6 @@ class PCVRParquetDataset(IterableDataset):
             'timestamp': torch.from_numpy(timestamps),
             'hour_of_day': torch.from_numpy(hour_of_day),
             'day_of_week': torch.from_numpy(day_of_week),
-            'month_of_year': torch.from_numpy(month_of_year),
             'user_id': user_ids,
             'item_id': item_ids,
             '_seq_domains': self.seq_domains,
